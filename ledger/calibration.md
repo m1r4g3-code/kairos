@@ -6,8 +6,10 @@
 
 The loop is tooled in `engine/ledger.py` (pure stdlib):
 - Each prediction is appended to `predictions.jsonl` automatically at report time.
-- After a match: `python engine/ledger.py result <id> <home|draw|away|win|lose> <closing_odds>`
-- Recompute the scorecard: `python engine/ledger.py` → prints Brier / hit-rate / ROI / CLV / buckets. Paste the headline numbers into the tables below.
+- See what's awaiting a result: `python engine/ledger.py pending`
+- After a match: `python engine/ledger.py result <id> <home|draw|away|win|lose> [closing_odds] [score]`
+  - Pass the final `score` (e.g. `2-1`) to settle **every** pick exactly — including O/U pushes on whole-number lines — not just the headline.
+- Recompute the scorecard: `python engine/ledger.py` → prints Brier / hit-rate / ROI / CLV / buckets across **all** picks. Paste the headline numbers into the tables below.
 
 ## How to read this
 
@@ -18,14 +20,19 @@ The loop is tooled in `engine/ledger.py` (pure stdlib):
 
 ## Lifetime
 
+_(As of 2026-06-03. Sample is tiny — directional only; no edge claim until n ≥ ~20 settled.)_
+
 | Metric | Value | Sample (n) |
 |--------|-------|-----------|
-| Predictions logged | 0 | — |
-| Results recorded | 0 | — |
-| Brier score | — | — |
-| Hit rate | — | — |
-| ROI | — | — |
-| Avg CLV | — | — |
+| Predictions logged | 10 | — |
+| Results recorded | 3 | 3 |
+| Brier score | 0.1265 | 3 scored picks |
+| Hit rate | 0.0 | 1 staked |
+| ROI | −1.00 | 0.59u staked |
+| Profit | −0.59u | — |
+| Avg CLV | — | 0 (no closing lines logged yet) |
+
+**Settled so far:** Fortaleza 1–2 Vitória (home pick **lost**, only staked bet), Junior 3–0 Nacional (away lean wrong, no stake), Denmark 0–0 DR Congo (away lean wrong, no stake). Brier 0.13 ≈ a fair two-way score on a 3-pick sample; the one real bet lost. **Too small to conclude anything** — logged here only to prove the loop runs on real data.
 
 ## Per-league trust notes
 

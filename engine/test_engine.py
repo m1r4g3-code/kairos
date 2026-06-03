@@ -38,9 +38,14 @@ def test_market() -> None:
     # de-vigged favorite prob < raw implied (vig removed)
     check("devig shrinks raw implied",
           v["fair_prob"]["home"] < v["implied_raw"]["home"])
-    # power method also sums to 1
+    # power method also sums to 1, and every prob is a valid probability
     p = market_mod.devig_power([2.10, 3.40, 3.60])
     check("power devig sums to 1.0", abs(sum(p) - 1.0) < TOL)
+    check("power devig probs in (0,1)", all(0.0 < x < 1.0 for x in p))
+    # power de-vig reachable through market_view (was previously dead code)
+    vp = market_mod.market_view(odds, method="power")
+    check("market_view power method sums to 1.0",
+          abs(sum(vp["fair_prob"].values()) - 1.0) < TOL)
 
 
 # ── poisson.py ───────────────────────────────────────────────────────────────
@@ -76,6 +81,27 @@ def test_poisson() -> None:
     # Symmetry: equal lambdas => equal home/away win prob.
     sym = poisson.outcome_1x2(poisson.score_matrix(1.3, 1.3))
     check("equal lambdas => symmetric 1X2", abs(sym["home"] - sym["away"]) < TOL)
+
+    # Non-negativity: NO cell may be negative (normalization alone wouldn't catch this).
+    m2 = poisson.score_matrix(2.4, 2.1, rho=-0.10)
+    check("no negative probability cells", all(p >= 0 for row in m2 for p in row))
+
+    # Out-of-band rho must be rejected, not silently produce a bad distribution.
+    bad_rho = False
+    try:
+        poisson.score_matrix(1.5, 1.2, rho=0.9)
+    except ValueError:
+        bad_rho = True
+    check("out-of-band rho raises", bad_rho)
+
+    # Whole-number O/U: exact total is a PUSH, not an under. over+under+push == 1.
+    ou_whole = poisson.over_under(m, 2.0)
+    check("whole-line O/U exposes a push", "push_2.0" in ou_whole)
+    check("over+under+push sums to 1.0",
+          abs(sum(ou_whole.values()) - 1.0) < TOL, f"sum={sum(ou_whole.values())}")
+    # Half-line stays two-way (no push key).
+    ou_half = poisson.over_under(m, 2.5)
+    check("half-line O/U has no push key", "push_2.5" not in ou_half)
 
 
 # ── elo.py ───────────────────────────────────────────────────────────────────
@@ -128,6 +154,14 @@ def test_kelly() -> None:
     check("huge edge still capped at 5%", s4.stake_fraction <= kelly.DEFAULT_CAP + TOL,
           f"frac={s4.stake_fraction}")
 
+    # Total-exposure cap: several big bets must be scaled to <= MAX_EXPOSURE combined.
+    bets = [kelly.size_bet("1x2", str(i), 0.90, 5.00, 0.30, confidence=95)
+            for i in range(5)]
+    capped = kelly.cap_total_exposure(bets, bankroll=100.0)
+    total = sum(s.stake_fraction for s in capped if s.bet)
+    check("combined exposure capped", total <= kelly.constants.MAX_EXPOSURE + TOL,
+          f"total={total}")
+
 
 # ── run.py (end-to-end) ──────────────────────────────────────────────────────
 def test_run_value() -> None:
@@ -138,11 +172,50 @@ def test_run_value() -> None:
         "odds": {"1x2": {"home": 2.50, "draw": 3.40, "away": 3.20}},
     }
     res = build_prediction(spec)
-    check("run produces a verdict", res["verdict"] in ("BET", "PASS — no value"))
-    check("run finds value on underpriced home", res["verdict"] == "BET",
+    check("run produces a verdict",
+          res["verdict"] in ("BET", "SPECULATIVE -- value is fragile to input assumptions",
+                             "PASS -- no value"))
+    check("run finds value on underpriced home", res["best_bet"] is not None,
           f"verdict={res['verdict']}")
     if res["best_bet"]:
         check("best bet stake within cap", res["best_bet"]["stake_units"] <= 5.0 + TOL)
+    # Sensitivity block is present whenever there is a best bet.
+    check("sensitivity reported for a value bet", res["sensitivity"] is not None)
+    # A robust strong edge should survive the perturbation grid.
+    check("strong edge flagged robust", res["sensitivity"]["robust"],
+          f"sens={res['sensitivity']}")
+
+
+def test_run_skipped_and_validation() -> None:
+    # An unmodelled market/line must be surfaced, not silently dropped.
+    spec = {
+        "match": "X vs Y", "league": "Test", "lambdas": {"home": 1.4, "away": 1.2},
+        "confidence": 60, "bankroll": 100,
+        "odds": {"1x2": {"home": 2.4, "draw": 3.3, "away": 3.0},
+                 "ou_4.5": {"over_4.5": 5.0, "under_4.5": 1.18}},
+    }
+    res = build_prediction(spec)
+    check("unmodelled market surfaced in skipped_markets",
+          any(s["market"] == "ou_4.5" for s in res["skipped_markets"]),
+          f"skipped={res['skipped_markets']}")
+
+    # Invalid odds (<=1.0) must be rejected at the boundary.
+    bad = False
+    try:
+        build_prediction({"lambdas": {"home": 1.2, "away": 1.0}, "confidence": 60,
+                          "odds": {"1x2": {"home": 1.0, "draw": 3.3, "away": 3.0}}})
+    except ValueError:
+        bad = True
+    check("invalid odds rejected", bad)
+
+    # Out-of-range confidence rejected.
+    bad2 = False
+    try:
+        build_prediction({"lambdas": {"home": 1.2, "away": 1.0}, "confidence": 150,
+                          "odds": {"1x2": {"home": 2.0, "draw": 3.3, "away": 4.0}}})
+    except ValueError:
+        bad2 = True
+    check("out-of-range confidence rejected", bad2)
 
 
 def test_run_pass() -> None:
@@ -166,7 +239,8 @@ def test_run_pass() -> None:
 
 def run_all() -> None:
     for fn in (test_market, test_poisson, test_elo, test_monte_carlo,
-               test_kelly, test_run_value, test_run_pass):
+               test_kelly, test_run_value, test_run_pass,
+               test_run_skipped_and_validation):
         fn()
     print("\n" + ("ALL TESTS PASSED" if not _failures
                    else f"{len(_failures)} FAILURE(S): {_failures}"))

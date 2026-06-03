@@ -4,10 +4,10 @@
 
 **A predictor "mech suit" for an LLM — turn a bookmaker screenshot into calibrated, value-first football picks.**
 
-[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#)
-[![Tests](https://img.shields.io/badge/engine%20tests-34%2F34%20passing-success.svg)](#testing)
-[![Status](https://img.shields.io/badge/status-active-orange.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-58%2F58%20passing-success.svg)](#testing)
+[![CI](https://github.com/m1r4g3-code/kairos/actions/workflows/tests.yml/badge.svg)](https://github.com/m1r4g3-code/kairos/actions/workflows/tests.yml)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](#license)
 
 *Kairos (καιρός) — the opportune moment; the right time to act.*
@@ -79,14 +79,16 @@ Kairos/
 │   ├── value-scan.md         #   EV scan + ranking
 │   └── contradiction-check.md#   the pass/play decision gate
 ├── engine/                  # zero-dependency local math (the calibration core)
+│   ├── constants.py          #   all tunable parameters, documented in one place
 │   ├── poisson.py            #   Poisson + Dixon-Coles → score matrix → all markets
 │   ├── elo.py                #   Elo + strength → expected goals (lambdas)
 │   ├── monte_carlo.py        #   match simulation with lambda uncertainty
 │   ├── market.py             #   de-vig odds → fair implied probabilities
 │   ├── kelly.py              #   EV detection + fractional-Kelly staking + guards
-│   ├── run.py                #   orchestrator entry point
+│   ├── run.py                #   orchestrator entry point (+ fragility/sensitivity)
 │   ├── ledger.py             #   the feedback loop (Brier / ROI / CLV / calibration)
-│   └── test_engine.py        #   34 deterministic tests
+│   ├── test_engine.py        #   46 deterministic engine tests
+│   └── test_ledger.py        #   12 persistence/calibration tests
 ├── ledger/                  # predictions → results → rolling calibration
 └── output-templates/        # the report format emitted in chat
 ```
@@ -139,18 +141,28 @@ python engine/ledger.py
 
 ## Testing
 
-The math engine is the highest-risk, highest-value module, so it ships with 34 deterministic assertions covering:
+**58 deterministic assertions** across two suites, run automatically on every push via [GitHub Actions](.github/workflows/tests.yml) (Python 3.10 / 3.11 / 3.12).
 
-- probability conservation (score matrix and every market sum to 1.0),
-- Dixon-Coles low-score correction behaviour,
+`engine/test_engine.py` (the math + orchestration) covers:
+- probability conservation **and non-negativity** (a bad `rho` can't silently emit negative cells),
+- Dixon-Coles low-score correction, and out-of-band `rho` rejection,
+- Over/Under **push handling** on whole-number lines (over + under + push = 1.0),
 - analytic vs. Monte Carlo agreement within sampling error,
-- de-vig sanity (overround, longshot handling),
-- Kelly never exceeding the cap, EV signs, and the confidence floor,
-- end-to-end value-found and disciplined-pass cases.
+- de-vig sanity for both the proportional and power methods,
+- Kelly never exceeding the per-bet cap, the combined-exposure cap, EV signs, confidence floor,
+- end-to-end value/pass/**fragile** verdicts, input validation, and surfaced unmodelled markets.
+
+`engine/test_ledger.py` (the persistence/calibration layer) covers:
+- schema validation and duplicate-ID auto-versioning (no silent overwrite),
+- **multi-pick scoring** (every pick, not just the headline) and score-based settling,
+- O/U push voiding, ROI/Brier/CLV arithmetic, and corrupt-line resilience.
 
 ```bash
 python engine/test_engine.py   # → ALL TESTS PASSED
+python engine/test_ledger.py   # → ALL LEDGER TESTS PASSED
 ```
+
+> **On calibration honesty:** the rolling Brier / ROI / CLV scorecard lives in [`ledger/calibration.md`](ledger/calibration.md) and is computed from *real* settled results. The sample is currently tiny — **Kairos makes no edge claim until enough results accumulate (≈20+) to show positive closing-line value.** Confident-looking probabilities are also fragility-tested (`sensitivity` in every run): if a "value" bet evaporates under a ±15% shift in the input expected-goals, it is downgraded to *speculative* rather than presented as an edge.
 
 ---
 

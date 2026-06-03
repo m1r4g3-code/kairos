@@ -10,11 +10,16 @@ Pure stdlib. No API keys.
 
 from __future__ import annotations
 
+import constants
+
+_HFA = constants.HOME_ADVANTAGE_ELO
+_GOALS_DIVISOR = constants.ELO_GOALS_DIVISOR
+
 
 # ── Elo basics ───────────────────────────────────────────────────────────────
 
 def elo_expected_score(rating_home: float, rating_away: float,
-                       home_advantage: float = 65.0) -> float:
+                       home_advantage: float = _HFA) -> float:
     """
     Elo expected score for the home side (0..1), home_advantage in Elo points
     (~65 is a typical football value). This is win+½·draw, not pure win prob.
@@ -24,17 +29,18 @@ def elo_expected_score(rating_home: float, rating_away: float,
 
 
 def elo_supremacy(rating_home: float, rating_away: float,
-                  home_advantage: float = 65.0) -> float:
+                  home_advantage: float = _HFA) -> float:
     """
     Convert an Elo gap into an expected goal *supremacy* (home minus away goals).
     Calibrated so ~100 Elo points ≈ ~0.5 goals of supremacy (typical football).
     """
     diff = (rating_home + home_advantage) - rating_away
-    return diff / 200.0
+    return diff / _GOALS_DIVISOR
 
 
 def elo_to_lambdas(rating_home: float, rating_away: float,
-                   total_goals: float = 2.7, home_advantage: float = 65.0,
+                   total_goals: float = constants.DEFAULT_TOTAL_GOALS,
+                   home_advantage: float = _HFA,
                    ) -> tuple[float, float]:
     """
     Split an expected total-goals environment into home/away lambdas using the

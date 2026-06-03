@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kairos"
+version = "0.2.0"
+description = "A predictor 'mech suit' for an LLM — calibrated, value-first football picks from a bookmaker screenshot."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Adekoya Emmanuel" }]
+keywords = ["football", "betting", "poisson", "dixon-coles", "kelly", "calibration"]
+
+# Kairos is intentionally zero-dependency: the engine is pure standard library.
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/m1r4g3-code/kairos"
+
+[tool.setuptools]
+# This is a tooling repo, not an installable package tree; nothing to auto-discover.
+packages = []

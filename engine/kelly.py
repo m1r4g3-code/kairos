@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-# ── Defaults (see knowledge/staking-kelly.md) ────────────────────────────────
-DEFAULT_FRACTION = 0.25        # ¼ Kelly
-DEFAULT_CAP = 0.05             # max 5% of bankroll on one bet
-CONFIDENCE_FLOOR = 45.0        # below this -> stake 0 (pass)
-MIN_EDGE = 0.03                # require +3% EV to bet
+import constants
+
+# ── Defaults (see knowledge/staking-kelly.md and engine/constants.py) ─────────
+DEFAULT_FRACTION = constants.DEFAULT_FRACTION    # ¼ Kelly
+DEFAULT_CAP = constants.DEFAULT_CAP              # max 5% of bankroll on one bet
+CONFIDENCE_FLOOR = constants.CONFIDENCE_FLOOR    # below this -> stake 0 (pass)
+MIN_EDGE = constants.MIN_EDGE                    # require +3% EV to bet
 
 
 def expected_value(prob: float, decimal_odds: float) -> float:
@@ -100,7 +102,7 @@ def size_bet(
     )
 
 
-def cap_total_exposure(stakes: list[Stake], max_exposure: float = 0.15,
+def cap_total_exposure(stakes: list[Stake], max_exposure: float = constants.MAX_EXPOSURE,
                        bankroll: float = 100.0) -> list[Stake]:
     """
     Scale down all active stakes proportionally if combined exposure exceeds the
