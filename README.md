@@ -6,7 +6,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-58%2F58%20passing-success.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-63%2F63%20passing-success.svg)](#testing)
 [![CI](https://github.com/m1r4g3-code/kairos/actions/workflows/tests.yml/badge.svg)](https://github.com/m1r4g3-code/kairos/actions/workflows/tests.yml)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](#license)
 

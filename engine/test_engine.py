@@ -237,10 +237,33 @@ def test_run_pass() -> None:
           f"verdict={res['verdict']} odds={fair_odds}")
 
 
+def test_report() -> None:
+    import report
+
+    # Overpriced short favourite => flagged as a trap.
+    trap_spec = {"match": "Trap FC v Minnow", "lambdas": {"home": 0.6, "away": 2.2},
+                 "confidence": 49, "odds": {"1x2": {"home": 11.0, "draw": 6.8, "away": 1.16}}}
+    s = report.summarize(build_prediction(trap_spec))
+    check("favourite is the shortest price", abs(s["fav"]["odds"] - 1.16) < TOL)
+    check("overpriced short favourite flagged as trap", s["trap"], f"gap={s['gap']}")
+
+    # A genuine robust value bet renders under 'VALUE BETS TO PLACE'.
+    val_spec = {"match": "Value FC v Weak", "lambdas": {"home": 1.9, "away": 0.9},
+                "confidence": 75, "odds": {"1x2": {"home": 2.5, "draw": 3.4, "away": 3.2}}}
+    card = report.render_card([build_prediction(val_spec)])
+    check("robust value surfaced in card", "VALUE BETS TO PLACE:" in card
+          and "Value FC" in card)
+    # A fairly-priced game is not a trap and yields no value.
+    fair_spec = {"match": "Fair A v Fair B", "lambdas": {"home": 1.3, "away": 1.25},
+                 "confidence": 60, "odds": {"1x2": {"home": 2.6, "draw": 3.2, "away": 2.7}}}
+    sf = report.summarize(build_prediction(fair_spec))
+    check("fairly-priced favourite not a trap", not sf["trap"])
+
+
 def run_all() -> None:
     for fn in (test_market, test_poisson, test_elo, test_monte_carlo,
                test_kelly, test_run_value, test_run_pass,
-               test_run_skipped_and_validation):
+               test_run_skipped_and_validation, test_report):
         fn()
     print("\n" + ("ALL TESTS PASSED" if not _failures
                    else f"{len(_failures)} FAILURE(S): {_failures}"))
