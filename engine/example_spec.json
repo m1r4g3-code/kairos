@@ -1,0 +1,26 @@
+{
+  "match": "Arsenal vs Chelsea",
+  "league": "Premier League",
+  "strengths": {
+    "att_home": 1.10,
+    "def_home": 0.92,
+    "att_away": 1.00,
+    "def_away": 1.02,
+    "league_home_avg": 1.55,
+    "league_away_avg": 1.25,
+    "home_mult": 1.12
+  },
+  "rho": -0.10,
+  "modifiers": {
+    "lam_home_mult": 1.03,
+    "lam_away_mult": 0.96,
+    "note": "Arsenal mild press edge at home; Chelsea missing first-choice CB (L4). Modifiers kept small per the bounded-nudge rule."
+  },
+  "confidence": 68,
+  "bankroll": 100,
+  "odds": {
+    "1x2": { "home": 2.10, "draw": 3.40, "away": 3.60 },
+    "ou_2.5": { "over_2.5": 1.95, "under_2.5": 1.85 },
+    "btts": { "btts_yes": 1.80, "btts_no": 1.95 }
+  }
+}
