@@ -251,8 +251,10 @@ def test_report() -> None:
     val_spec = {"match": "Value FC v Weak", "lambdas": {"home": 1.9, "away": 0.9},
                 "confidence": 75, "odds": {"1x2": {"home": 2.5, "draw": 3.4, "away": 3.2}}}
     card = report.render_card([build_prediction(val_spec)])
-    check("robust value surfaced in card", "VALUE BETS TO PLACE:" in card
+    check("robust value surfaced in card", "BET THESE" in card
           and "Value FC" in card)
+    # team name + venue label rendered (no raw 'home'/'away' tokens)
+    check("renders team name with venue", "Value FC (HOME)" in card, card)
     # A fairly-priced game is not a trap and yields no value.
     fair_spec = {"match": "Fair A v Fair B", "lambdas": {"home": 1.3, "away": 1.25},
                  "confidence": 60, "odds": {"1x2": {"home": 2.6, "draw": 3.2, "away": 2.7}}}

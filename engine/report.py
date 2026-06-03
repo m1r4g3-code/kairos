@@ -15,17 +15,38 @@ CLI:
 from __future__ import annotations
 
 import json
+import re
 import sys
 
 from run import build_prediction
 
 # A short favourite this much over my number = an overpriced "banker" trap.
 TRAP_MIN_IMPLIED = 0.65      # only short favourites can be "bankers"
-TRAP_MIN_GAP = 0.08          # bookie % at least 8 pts above my %
+TRAP_MIN_GAP = 0.08          # odds' % at least 8 pts above my %
 
 
 def _implied(odds: float) -> float:
     return 1.0 / odds
+
+
+def _teams(match: str) -> tuple[str | None, str | None]:
+    """Split a 'Home v Away' (or 'Home vs Away') match string into team names."""
+    parts = re.split(r"\s+vs?\s+", match, maxsplit=1)
+    if len(parts) != 2:
+        return None, None
+    clean = lambda s: re.sub(r"\s*\(.*?\)", "", s).strip()   # drop parenthetical notes
+    return clean(parts[0]), clean(parts[1])
+
+
+def _side_name(selection: str, home: str | None, away: str | None) -> str:
+    """Turn home/draw/away into a human label with the team name + venue."""
+    if selection == "home" and home:
+        return f"{home} (HOME)"
+    if selection == "away" and away:
+        return f"{away} (AWAY)"
+    if selection == "draw":
+        return "Draw"
+    return selection
 
 
 def summarize(pred: dict) -> dict:
@@ -48,60 +69,69 @@ def summarize(pred: dict) -> dict:
 def _decision(s: dict) -> str:
     """One clear token for the favourite line."""
     if s["trap"]:
-        return "NO (TRAP)"
+        return "SKIP (TRAP)"
     if s["robust"] and s["fav"] in s["value_bets"]:
         return "BET"
-    return "NO"
+    return "SKIP"
 
 
 def render_card(preds: list[dict]) -> str:
-    """Render the full slip as one plain-text chart."""
+    """Render the full slip as one plain-text chart (team names + home/away)."""
     rows = [summarize(p) for p in preds]
     out: list[str] = []
-    bar = "=" * 78
+    bar = "=" * 80
     out.append(bar)
-    out.append("  KAIROS CARD READER   (rule: my % HIGHER than bookie = bet; LOWER = skip)")
+    out.append("  KAIROS CARD READER")
+    out.append("  I bet ONLY when my % is higher than the odds' % (that means good value).")
+    out.append("  ODDS% = chance the SportyBet price implies.   MY% = chance I think is real.")
     out.append(bar)
-    out.append(f"  {'MATCH':<34}{'FAV PICK':<14}{'BOOKIE':>7}{'ME':>6}  DECISION")
-    out.append("  " + "-" * 74)
+    out.append(f"  {'WHO TO BACK (the favourite)':<34}{'ODDS':>6}{'ODDS%':>7}{'MY%':>6}  WHAT TO DO")
+    out.append("  " + "-" * 76)
     for s in rows:
         fav = s["fav"]
+        home, away = _teams(s["match"])
         if not fav:
-            out.append(f"  {s['match'][:33]:<34}{'(no odds)':<14}{'':>7}{'':>6}  SKIP")
+            out.append(f"  {s['match'][:33]:<34}{'':>6}{'':>7}{'':>6}  SKIP (no odds)")
             continue
-        pick = f"{fav['selection']}@{fav['odds']:.2f}"
+        who = _side_name(fav["selection"], home, away)
         out.append(
-            f"  {s['match'][:33]:<34}{pick:<14}"
+            f"  {who[:33]:<34}{fav['odds']:>6.2f}"
             f"{s['fav_implied']*100:>6.0f}%{fav['my_prob']*100:>5.0f}%"
             f"  {_decision(s)}"
         )
-    out.append("  " + "-" * 74)
+    out.append("  " + "-" * 76)
 
-    # Robust value bets (the only real YES) vs fragile darts.
+    # Robust value bets (the only real BET) vs fragile darts.
     robust_bets = [(s, b) for s in rows for b in s["value_bets"] if s["robust"]]
     fragile_bets = [(s, b) for s in rows for b in s["value_bets"] if not s["robust"]]
 
+    def _line(s, b):
+        home, away = _teams(s["match"])
+        who = _side_name(b["selection"], home, away)
+        return (f"     {who} @{b['odds']:.2f}  "
+                f"(my {b['my_prob']*100:.0f}% beats the odds' {_implied(b['odds'])*100:.0f}%)")
+
     if robust_bets:
-        out.append("  VALUE BETS TO PLACE:")
+        out.append("  >>> BET THESE (good value):")
         for s, b in robust_bets:
-            out.append(f"     {s['match'][:40]} -> {b['selection']} @{b['odds']:.2f} "
-                       f"(me {b['my_prob']*100:.0f}% vs bookie {_implied(b['odds'])*100:.0f}%)")
+            out.append(_line(s, b))
     else:
-        out.append("  VALUE BETS TO PLACE: none  ->  best move is bet nothing.")
+        out.append("  >>> BET THESE: none today -> the smart move is bet nothing.")
 
     if fragile_bets:
-        out.append("  SPECULATIVE DARTS ONLY (fragile / thin data - small stake at most):")
+        out.append("  >>> TINY PUNT ONLY (shaky / not enough data - small money at most):")
         for s, b in fragile_bets:
-            out.append(f"     {s['match'][:40]} -> {b['selection']} @{b['odds']:.2f}")
+            out.append(_line(s, b))
 
     # Reddest trap = biggest overpriced short favourite.
     traps = [s for s in rows if s["trap"]]
     if traps:
         worst = max(traps, key=lambda s: s["gap"])
         f = worst["fav"]
-        out.append("  REDDEST TRAP (avoid most): "
-                   f"{worst['match'][:40]} {f['selection']}@{f['odds']:.2f} "
-                   f"-> bookie {worst['fav_implied']*100:.0f}% but me only {f['my_prob']*100:.0f}%")
+        home, away = _teams(worst["match"])
+        who = _side_name(f["selection"], home, away)
+        out.append(f"  >>> AVOID MOST (fake 'banker'): {who} @{f['odds']:.2f}  "
+                   f"-> odds say {worst['fav_implied']*100:.0f}% but I say only {f['my_prob']*100:.0f}%")
     out.append(bar)
     return "\n".join(out)
 
