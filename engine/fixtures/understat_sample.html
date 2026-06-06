@@ -1,0 +1,7 @@
+<!-- Trimmed sample of an Understat league page for offline tests.
+     Real pages hex-escape the JSON (\x7B...); our parser unicode_escape-decodes,
+     which is a no-op on the plain ASCII JSON below, so this exercises the pipeline. -->
+<html><body><script>
+var teamsData = JSON.parse('{"1":{"id":"1","title":"Arsenal","history":[{"xG":"2.10","xGA":"0.80"},{"xG":"1.60","xGA":"1.10"},{"xG":"2.30","xGA":"0.90"}]},"2":{"id":"2","title":"Chelsea","history":[{"xG":"1.30","xGA":"1.40"},{"xG":"1.00","xGA":"1.70"},{"xG":"1.50","xGA":"1.20"}]},"3":{"id":"3","title":"Everton","history":[{"xG":"0.90","xGA":"1.60"},{"xG":"1.10","xGA":"1.90"},{"xG":"0.80","xGA":"2.00"}]}}');
+var datesData = JSON.parse('{}');
+</script></body></html>

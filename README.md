@@ -4,9 +4,10 @@
 
 **A predictor "mech suit" for an LLM — turn a bookmaker screenshot into calibrated, value-first football picks.**
 
+[![Version](https://img.shields.io/badge/version-2.0.0-blueviolet.svg)](https://github.com/m1r4g3-code/kairos/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-63%2F63%20passing-success.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-104%20passing-success.svg)](#testing)
 [![CI](https://github.com/m1r4g3-code/kairos/actions/workflows/tests.yml/badge.svg)](https://github.com/m1r4g3-code/kairos/actions/workflows/tests.yml)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](#license)
 
@@ -27,6 +28,24 @@ There are no API keys, no trained models, no servers, and no background jobs. Th
 ### Recommend-only by design
 
 Kairos **never places bets, stores credentials, or moves money.** It outputs picks and Kelly-sized stakes; a human places them. Automating a bookmaker account violates their terms of service (account bans, voided winnings) and creates a credential/security liability — so that path is deliberately excluded.
+
+---
+
+## ⚡ New in v2.0 — the sharp-line edge
+
+v1 estimated goals by judgment, then priced markets from scratch. The honest weakness: **the inputs were guesses.** v2.0 fixes the input layer with a proven retail approach — **don't out-predict the market, beat the soft book against the sharp one.**
+
+1. **Sharp-line comparison (the core).** Pull odds from many bookmakers via [The Odds API](https://the-odds-api.com), take the **sharp** book (Pinnacle / sharp consensus), de-vig it to the *true* probability, and flag value wherever a soft book (e.g. SportyBet) **pays more than the sharp price says it should**. → [`engine/edge.py`](engine/edge.py)
+2. **Data-fed engine (cross-check).** Real **xG** ([Understat](https://understat.com)) and **Elo** ([Club Elo](http://clubelo.com)) feed the existing Poisson engine — grounding the model in data, not vibes. → [`engine/sources/`](engine/sources/)
+3. **Backtester (the honesty check).** Replay the soft-vs-sharp strategy on free historical results + closing odds ([Football-Data.co.uk](https://www.football-data.co.uk)) and print **ROI / hit-rate / CLV** — prove the edge *before* risking money or paying for anything. → [`engine/backtest.py`](engine/backtest.py)
+
+**Still keyless-friendly:** Understat, Club Elo, and Football-Data need **no key**. Only the sharp-line module needs one free signup ([The Odds API](https://the-odds-api.com), 500 calls/mo). All HTTP is pure-stdlib `urllib`; the key lives in a gitignored `.env` (see [`.env.example`](.env.example)). Tests run **fully offline** against committed sample fixtures.
+
+```
+SportyBet 1.95 (51%)   vs   Pinnacle de-vigged (54%)   →   +6% value, BET
+```
+
+> **Honest ceiling:** soft-vs-sharp value is real but fragile (books limit winners, lines move, margins are thin). v2.0 makes the inputs **data-grounded and provable** — a big upgrade over guesses — but profit is never guaranteed. The backtest is the truth check.
 
 ---
 
@@ -78,17 +97,29 @@ Kairos/
 │   ├── enrich.md             #   what to research, in priority order
 │   ├── value-scan.md         #   EV scan + ranking
 │   └── contradiction-check.md#   the pass/play decision gate
-├── engine/                  # zero-dependency local math (the calibration core)
+├── engine/                  # zero-dependency local math + data adapters
 │   ├── constants.py          #   all tunable parameters, documented in one place
+│   ├── config.py             #   .env loader (Odds API key); stdlib, gitignored secret
 │   ├── poisson.py            #   Poisson + Dixon-Coles → score matrix → all markets
 │   ├── elo.py                #   Elo + strength → expected goals (lambdas)
 │   ├── monte_carlo.py        #   match simulation with lambda uncertainty
 │   ├── market.py             #   de-vig odds → fair implied probabilities
 │   ├── kelly.py              #   EV detection + fractional-Kelly staking + guards
+│   ├── edge.py               #   ⚡ sharp-line comparison (the v2.0 core)
+│   ├── backtest.py           #   ⚡ soft-vs-sharp backtester → ROI/CLV/hit-rate
 │   ├── run.py                #   orchestrator entry point (+ fragility/sensitivity)
+│   ├── report.py             #   plain-English card renderer (+ SHARP% column)
 │   ├── ledger.py             #   the feedback loop (Brier / ROI / CLV / calibration)
-│   ├── test_engine.py        #   46 deterministic engine tests
-│   └── test_ledger.py        #   12 persistence/calibration tests
+│   ├── sources/             #   ⚡ data adapters (all stdlib urllib)
+│   │   ├── odds_api.py        #     The Odds API → many books incl Pinnacle (needs key)
+│   │   ├── clubelo.py         #     Club Elo ratings → elo spec (keyless)
+│   │   ├── understat.py       #     Understat xG → strengths spec (keyless, big-5)
+│   │   └── footballdata.py    #     Football-Data.co.uk history+odds (keyless, backtest)
+│   ├── fixtures/            #   committed *_sample.* files so tests run fully offline
+│   ├── test_engine.py        #   52 deterministic engine tests
+│   ├── test_ledger.py        #   12 persistence/calibration tests
+│   ├── test_edge.py          #   27 sharp-line + backtest tests
+│   └── test_sources.py       #   13 data-adapter parser tests
 ├── ledger/                  # predictions → results → rolling calibration
 └── output-templates/        # the report format emitted in chat
 ```
@@ -111,6 +142,19 @@ python engine/run.py my_match.json
 ```
 
 A match spec supplies the expected-goals source (direct `lambdas`, relative `strengths`, or `elo`), bounded qualitative `modifiers`, a `confidence` score, the bankroll, and the bookmaker `odds`. The engine returns a calibrated distribution, a Monte Carlo cross-check, and a ranked value table with Kelly stakes.
+
+### Sharp-line edge (v2.0)
+
+```bash
+# Compare a soft book to the sharp price (works offline on the sample fixture)
+python engine/edge.py
+
+# Prove it on real history — prints ROI / hit-rate / CLV (needs no key)
+python engine/backtest.py E0 2425          # download EPL 2024/25 and replay
+python engine/backtest.py --fixture fd_sample.csv   # offline demo
+
+# Live sharp odds (after one free signup): copy .env.example → .env, add ODDS_API_KEY
+```
 
 ### How it computes a prediction
 
@@ -141,7 +185,7 @@ python engine/ledger.py
 
 ## Testing
 
-**58 deterministic assertions** across two suites, run automatically on every push via [GitHub Actions](.github/workflows/tests.yml) (Python 3.10 / 3.11 / 3.12).
+**104 deterministic assertions** across four suites, run automatically on every push via [GitHub Actions](.github/workflows/tests.yml) (Python 3.10 / 3.11 / 3.12). Everything runs **fully offline** against committed sample fixtures — no network, no API key.
 
 `engine/test_engine.py` (the math + orchestration) covers:
 - probability conservation **and non-negativity** (a bad `rho` can't silently emit negative cells),
@@ -157,9 +201,20 @@ python engine/ledger.py
 - **multi-pick scoring** (every pick, not just the headline) and score-based settling,
 - O/U push voiding, ROI/Brier/CLV arithmetic, and corrupt-line resilience.
 
+`engine/test_edge.py` (the v2.0 sharp-line core) covers:
+- sharp-book selection + consensus fallback, de-vig to true probability,
+- value detection (soft beats sharp), engine-vs-sharp agreement cross-check,
+- The Odds API event parsing, and the soft-vs-sharp **backtester** (ROI/CLV/threshold sweep).
+
+`engine/test_sources.py` (the keyless data adapters) covers:
+- Club Elo CSV parsing, Understat xG decode → attack/defence strengths,
+- and that the data-fed `strengths`/`elo` specs run end-to-end through the engine.
+
 ```bash
 python engine/test_engine.py   # → ALL TESTS PASSED
 python engine/test_ledger.py   # → ALL LEDGER TESTS PASSED
+python engine/test_edge.py     # → ALL EDGE TESTS PASSED
+python engine/test_sources.py  # → ALL SOURCE TESTS PASSED
 ```
 
 > **On calibration honesty:** the rolling Brier / ROI / CLV scorecard lives in [`ledger/calibration.md`](ledger/calibration.md) and is computed from *real* settled results. The sample is currently tiny — **Kairos makes no edge claim until enough results accumulate (≈20+) to show positive closing-line value.** Confident-looking probabilities are also fragility-tested (`sensitivity` in every run): if a "value" bet evaporates under a ±15% shift in the input expected-goals, it is downgraded to *speculative* rather than presented as an edge.

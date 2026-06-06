@@ -18,6 +18,7 @@ import json
 import re
 import sys
 
+import edge
 from run import build_prediction
 
 # A short favourite this much over my number = an overpriced "banker" trap.
@@ -132,6 +133,74 @@ def render_card(preds: list[dict]) -> str:
         who = _side_name(f["selection"], home, away)
         out.append(f"  >>> AVOID MOST (fake 'banker'): {who} @{f['odds']:.2f}  "
                    f"-> odds say {worst['fav_implied']*100:.0f}% but I say only {f['my_prob']*100:.0f}%")
+    out.append(bar)
+    return "\n".join(out)
+
+
+def render_sharp_card(rows: list[dict]) -> str:
+    """
+    v2.0 card: SportyBet's price vs the SHARP (Pinnacle) true price, with the
+    engine's data-fed number as an optional cross-check.
+
+    Each row: {
+      "match": "Home v Away",
+      "sb_odds": {sel: decimal},          # SportyBet's prices
+      "sharp":   {sel: prob},             # de-vigged sharp fair probs (edge.sharp_fair)
+      "engine":  {sel: prob} | None,      # optional data-fed engine 1X2 cross-check
+    }
+    """
+    out: list[str] = []
+    bar = "=" * 82
+    out.append(bar)
+    out.append("  KAIROS CARD READER (v2.0 - sharp-line)")
+    out.append("  ODDS% = SportyBet price.  SHARP% = Pinnacle 'true' price.  MY% = engine.")
+    out.append("  Bet only when SportyBet pays MORE than SHARP says it should (value).")
+    out.append(bar)
+    out.append(f"  {'WHO (favourite)':<30}{'ODDS':>6}{'ODDS%':>7}{'SHARP%':>8}{'MY%':>6}  DO")
+    out.append("  " + "-" * 78)
+
+    value_lines: list[str] = []
+    for r in rows:
+        home, away = _teams(r["match"])
+        sb, sharp = r.get("sb_odds", {}), r.get("sharp", {})
+        eng = r.get("engine") or {}
+        if not sb or not sharp:
+            out.append(f"  {r['match'][:29]:<30}{'':>6}{'':>7}{'':>8}{'':>6}  SKIP (no data)")
+            continue
+        rows_ev = edge.value_vs_sharp(sb, sharp)
+        fav_sel = min(sb, key=sb.get)                       # lowest odds = favourite
+        fav_odds = sb[fav_sel]
+        sharp_p = sharp.get(fav_sel)
+        eng_p = eng.get(fav_sel)
+        who = _side_name(fav_sel, home, away)
+        # agreement-aware verdict for the favourite line
+        fav_row = next((x for x in rows_ev if x["selection"] == fav_sel), None)
+        do = "SKIP"
+        if fav_row and fav_row["value"]:
+            do = "BET"
+        elif sharp_p and (1 / fav_odds - sharp_p) >= TRAP_MIN_GAP and 1 / fav_odds >= TRAP_MIN_IMPLIED:
+            do = "SKIP (TRAP)"
+        eng_s = f"{eng_p*100:>5.0f}%" if eng_p is not None else "   -- "
+        out.append(f"  {who[:29]:<30}{fav_odds:>6.2f}{1/fav_odds*100:>6.0f}%"
+                   f"{(sharp_p or 0)*100:>7.0f}%{eng_s}  {do}")
+        # collect any value selections (sb beats sharp) for the BET list
+        for x in rows_ev:
+            if x["value"]:
+                vwho = _side_name(x["selection"], home, away)
+                tag = ""
+                if eng:
+                    a = edge.agree(eng, sharp)
+                    tag = "  [engine agrees]" if a["aligned"] else "  [engine differs - caution]"
+                value_lines.append(
+                    f"     {vwho} @{x['sb_odds']:.2f}  "
+                    f"(SportyBet {x['sb_implied']*100:.0f}% vs sharp {x['sharp_prob']*100:.0f}% "
+                    f"-> EV {x['ev']*100:+.0f}%){tag}")
+    out.append("  " + "-" * 78)
+    if value_lines:
+        out.append("  >>> BET THESE (SportyBet pays more than the sharp price):")
+        out.extend(value_lines)
+    else:
+        out.append("  >>> BET THESE: none - SportyBet isn't beating the sharp price. Skip.")
     out.append(bar)
     return "\n".join(out)
 

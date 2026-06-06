@@ -28,3 +28,11 @@ jobs:
       - name: Ledger tests
         working-directory: engine
         run: python test_ledger.py
+
+      - name: Edge + backtest tests (offline fixtures)
+        working-directory: engine
+        run: python test_edge.py
+
+      - name: Data-source parser tests (offline fixtures)
+        working-directory: engine
+        run: python test_sources.py

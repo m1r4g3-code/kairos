@@ -21,3 +21,7 @@ Thumbs.db
 *.log
 tmp/
 scratch/
+
+# Data caches written by the live adapters (keep only the committed *_sample.* fixtures)
+engine/fixtures/*
+!engine/fixtures/*_sample.*

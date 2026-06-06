@@ -1,0 +1,76 @@
+{
+  "_note": "Sample The Odds API v4 /odds response (h2h). Used for offline tests/dev so we never burn the free quota or need a key.",
+  "events": [
+    {
+      "id": "sample_ars_che",
+      "home_team": "Arsenal",
+      "away_team": "Chelsea",
+      "commence_time": "2026-06-10T14:00:00Z",
+      "bookmakers": [
+        {
+          "key": "pinnacle",
+          "title": "Pinnacle",
+          "markets": [
+            {"key": "h2h", "outcomes": [
+              {"name": "Arsenal", "price": 1.80},
+              {"name": "Chelsea", "price": 4.50},
+              {"name": "Draw", "price": 3.90}
+            ]}
+          ]
+        },
+        {
+          "key": "williamhill",
+          "title": "William Hill",
+          "markets": [
+            {"key": "h2h", "outcomes": [
+              {"name": "Arsenal", "price": 1.95},
+              {"name": "Chelsea", "price": 4.30},
+              {"name": "Draw", "price": 3.80}
+            ]}
+          ]
+        },
+        {
+          "key": "betway",
+          "title": "Betway",
+          "markets": [
+            {"key": "h2h", "outcomes": [
+              {"name": "Arsenal", "price": 1.83},
+              {"name": "Chelsea", "price": 4.40},
+              {"name": "Draw", "price": 3.85}
+            ]}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sample_liv_eve",
+      "home_team": "Liverpool",
+      "away_team": "Everton",
+      "commence_time": "2026-06-10T16:30:00Z",
+      "bookmakers": [
+        {
+          "key": "pinnacle",
+          "title": "Pinnacle",
+          "markets": [
+            {"key": "h2h", "outcomes": [
+              {"name": "Liverpool", "price": 1.40},
+              {"name": "Everton", "price": 8.00},
+              {"name": "Draw", "price": 4.80}
+            ]}
+          ]
+        },
+        {
+          "key": "betway",
+          "title": "Betway",
+          "markets": [
+            {"key": "h2h", "outcomes": [
+              {"name": "Liverpool", "price": 1.42},
+              {"name": "Everton", "price": 7.50},
+              {"name": "Draw", "price": 4.70}
+            ]}
+          ]
+        }
+      ]
+    }
+  ]
+}
