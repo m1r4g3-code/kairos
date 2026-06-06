@@ -35,8 +35,12 @@ def _load_env(path: str = ENV_PATH) -> None:
 _load_env()
 
 # ── Settings ──────────────────────────────────────────────────────────────────
-ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
-ODDS_API_BASE = "https://api.the-odds-api.com/v4"
+# Accept either THE_ODDS_API_KEY (user's .env naming) or ODDS_API_KEY.
+ODDS_API_KEY = os.environ.get("THE_ODDS_API_KEY") or os.environ.get("ODDS_API_KEY", "")
+ODDS_API_BASE = os.environ.get("THE_ODDS_API_BASE_URL", "https://api.the-odds-api.com/v4")
+
+# Optional, for the future environment/weather layer (L9). Not used yet.
+OPENWEATHER_API_KEY = os.environ.get("OPENWEATHER_API_KEY", "")
 
 # Books we trust as "sharp" (closest to true price), in priority order.
 SHARP_PRIORITY = ("pinnacle", "betfair_ex_eu", "marathonbet")
