@@ -140,3 +140,39 @@ at r = 15% and no different at r = 5%.
 
 **Not testable on this data, shipped as a defect fix instead (audit 5a #9):** no
 fallback to a consensus of fewer than 3 soft books.
+
+**A1 result (2026-10-02, `research/results/a1_development.md`, commit `dc71f36`).**
+Dropped on development data; the holdout was not read. No gap limit met the
+choice rule. CLV of kept minus flagged bets: +0.5% (-0.4 to +1.4) at 5%, +0.1%
+(-1.7 to +1.9) at 10%, +1.7% (-1.4 to +4.9) at 15%. All three intervals include
+zero. Flagged bets still had positive CLV at 5% and 10%, so the gate would have
+removed bets no worse than the ones it kept. The checked blend's log loss is
+indistinguishable from Pinnacle alone (+0.00001 at 10%), and the other books'
+median is worse than Pinnacle (+0.0005, interval above zero). My guess for 15%
+pointed the right way (flagged CLV +0.7% against +2.4%) but 124 bets cannot
+establish it. The defect fix (no reference from fewer than 3 soft books) stays.
+
+### A2. De-vig bake-off (written 2026-10-02, before any A2 run)
+
+**Idea (docs/research.md, proposal A2).** Kairos removes Pinnacle's margin with
+the power method. Add Shin's method and compare proportional, power and Shin.
+
+**What is run.** For every development match with a Pinnacle price, each method
+turns the price into probabilities and is scored by log loss against the result.
+Four price sets: 1X2 pre-match, 1X2 closing, over/under 2.5 pre-match and
+closing. Differences are paired by match against the power method, with a 95%
+interval. Also split by the longest price in the market (under 5, 5 to 10, 10
+and over) and by league. No walk is needed: each forecast uses only that
+match's own price.
+
+**Choice rule on development data.** The candidate is the method with the
+lowest log loss on 1X2 pre-match prices (the reference Kairos bets against). It
+goes to the holdout only if its paired difference against power lies wholly
+below zero. Otherwise power stays and the holdout is not read.
+
+**Holdout rule.** Adopt the candidate only if, on the holdout 1X2 pre-match
+prices, its paired difference against power again lies wholly below zero.
+
+**Expected.** Differences of a few ten-thousandths. Proportional worst, because
+it leaves too much probability on longshots. Power and Shin close together.
+Guess: power stays.
