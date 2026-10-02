@@ -213,6 +213,8 @@ def build_prediction(spec: dict) -> dict:
             )
             stakes.append(st)
 
+    # One spec is one match: its bets are one position, then the overall cap.
+    stakes = kelly.cap_match_exposure(stakes, bankroll=bankroll)
     stakes = kelly.cap_total_exposure(stakes, bankroll=bankroll)
     for st in stakes:
         value_table.append({

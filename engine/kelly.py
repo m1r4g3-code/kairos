@@ -102,6 +102,42 @@ def size_bet(
     )
 
 
+def cap_match_exposure(stakes: list[Stake], cap: float = DEFAULT_CAP,
+                       bankroll: float = 100.0) -> list[Stake]:
+    """
+    Bets on one match are not independent (home and over 2.5 win together; two
+    outcomes of one market cannot both win). Treat them as one position: if the
+    combined stake on the match exceeds the single-bet cap, scale them all down
+    so the match as a whole risks no more than one capped bet.
+
+    Pass the stakes for ONE match.
+    """
+    total_frac = sum(s.stake_fraction for s in stakes if s.bet)
+    if total_frac <= cap or total_frac == 0:
+        return stakes
+    scale = cap / total_frac
+    for s in stakes:
+        if s.bet:
+            s.stake_fraction = round(s.stake_fraction * scale, 4)
+            s.stake_units = round(s.stake_fraction * bankroll, 2)
+            s.reason += f" (scaled x{scale:.2f}: one match, one position)"
+    return stakes
+
+
+def shrunk_stake_fraction(decimal_odds: float, claimed_ev: float, shrink: float = 1.0,
+                          fraction: float = DEFAULT_FRACTION, cap: float = DEFAULT_CAP) -> float:
+    """
+    Fractional Kelly for a price-comparison bet, where the input is a claimed
+    edge (price x fair probability - 1) rather than a model probability. The
+    claimed edge is multiplied by `shrink` (0..1) before sizing, because part of
+    a claimed edge does not survive to the closing price.
+    """
+    if not 0.0 <= shrink <= 1.0:
+        raise ValueError(f"shrink must be in [0, 1], got {shrink}")
+    prob = (1.0 + shrink * claimed_ev) / decimal_odds
+    return min(cap, fraction * kelly_fraction(prob, decimal_odds))
+
+
 def cap_total_exposure(stakes: list[Stake], max_exposure: float = constants.MAX_EXPOSURE,
                        bankroll: float = 100.0) -> list[Stake]:
     """

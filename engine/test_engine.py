@@ -164,6 +164,39 @@ def test_kelly() -> None:
           f"total={total}")
 
 
+def test_match_exposure() -> None:
+    # audit 5a #11: several bets on one match are one position
+    bets = [kelly.size_bet("1x2", "home", 0.90, 5.00, 0.30, confidence=95),
+            kelly.size_bet("ou_2.5", "over_2.5", 0.90, 5.00, 0.30, confidence=95)]
+    check("each bet alone sits at the 5% cap",
+          all(abs(b.stake_fraction - kelly.DEFAULT_CAP) < TOL for b in bets))
+    capped = kelly.cap_match_exposure(bets, bankroll=100.0)
+    total = sum(b.stake_fraction for b in capped)
+    check("two bets on one match together risk one capped bet",
+          abs(total - kelly.DEFAULT_CAP) < 1e-3, f"total={total}")
+    check("units follow the fraction", abs(sum(b.stake_units for b in capped) - 5.0) < 0.02)
+    small = [kelly.size_bet("1x2", "home", 0.52, 2.10, 0.47, confidence=60)]
+    before = small[0].stake_fraction
+    check("a single small bet is untouched",
+          kelly.cap_match_exposure(small)[0].stake_fraction == before)
+    spec = {"match": "A vs B", "lambdas": {"home": 2.4, "away": 0.7}, "confidence": 90,
+            "odds": {"1x2": {"home": 2.6, "draw": 3.4, "away": 3.0},
+                     "ou_2.5": {"over_2.5": 2.6, "under_2.5": 1.5}}}
+    res = build_prediction(spec)
+    staked = sum(r["stake_units"] for r in res["value_table"])
+    check("a full run never risks more than 5 units on one match", staked <= 5.0 + 0.02,
+          f"staked={staked}")
+
+    f_full = kelly.shrunk_stake_fraction(3.0, 0.06)
+    f_half = kelly.shrunk_stake_fraction(3.0, 0.06, shrink=0.5)
+    check("quarter Kelly on a claimed edge", abs(f_full - 0.25 * 0.06 / 2.0) < 1e-12)
+    check("shrinking the edge shrinks the stake in proportion", abs(f_half - f_full / 2) < 1e-12)
+    check("zero shrink means no bet", kelly.shrunk_stake_fraction(3.0, 0.06, shrink=0.0) == 0.0)
+    check("stake is capped", kelly.shrunk_stake_fraction(1.5, 2.0) == kelly.DEFAULT_CAP)
+    check("shrink outside 0..1 rejected",
+          _raises(lambda: kelly.shrunk_stake_fraction(3.0, 0.06, shrink=1.5)))
+
+
 # ── run.py (end-to-end) ──────────────────────────────────────────────────────
 def test_run_value() -> None:
     # Spec with deliberately generous home odds => should surface a value bet.
@@ -428,7 +461,7 @@ def test_derive() -> None:
 
 
 def run_all() -> None:
-    for fn in (test_audit_defects, test_derive, test_market, test_poisson, test_elo, test_monte_carlo,
+    for fn in (test_audit_defects, test_derive, test_match_exposure, test_market, test_poisson, test_elo, test_monte_carlo,
                test_kelly, test_run_value, test_run_pass,
                test_run_skipped_and_validation, test_report):
         fn()
