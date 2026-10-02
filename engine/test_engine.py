@@ -280,6 +280,24 @@ def test_audit_defects() -> None:
     p = market_mod.devig_power([1.02, 15.0, 34.0])
     check("power de-vig still solves an extreme market", abs(sum(p) - 1.0) < 1e-9 and p[0] > 0.9)
 
+    # Shin's method (proposal A2)
+    odds = [1.25, 6.5, 13.0]
+    shin, prop, powr = (market_mod.devig_shin(odds), market_mod.devig_proportional(odds),
+                        market_mod.devig_power(odds))
+    check("Shin sums to 1", abs(sum(shin) - 1.0) < 1e-9)
+    check("Shin puts less on the longshot than proportional does",
+          shin[2] < prop[2] and shin[0] > prop[0], f"shin={shin} prop={prop}")
+    check("Shin and power agree on the direction of the correction",
+          (shin[2] - prop[2]) * (powr[2] - prop[2]) > 0)
+    fair3 = [1 / 0.5, 1 / 0.3, 1 / 0.2]
+    check("Shin leaves a zero-margin market unchanged",
+          all(abs(a - b) < 1e-9 for a, b in zip(market_mod.devig_shin(fair3), [0.5, 0.3, 0.2])))
+    check("Shin on an even two-way market gives 0.5",
+          abs(market_mod.devig_shin([1.9, 1.9])[0] - 0.5) < 1e-9)
+    check("market_view accepts shin and rejects an unknown method",
+          abs(sum(market_mod.market_view({"a": 1.9, "b": 1.9}, "shin")["fair_prob"].values()) - 1) < 1e-5
+          and _raises(lambda: market_mod.market_view({"a": 1.9, "b": 1.9}, "magic")))
+
     # 5a #8: the Elo floor must not change the total
     lh, la = elo_mod.elo_to_lambdas(2100, 1500, total_goals=2.7)
     check("Elo floor keeps the total", abs(lh + la - 2.7) < 1e-9 and la == 0.15, f"{lh}+{la}")

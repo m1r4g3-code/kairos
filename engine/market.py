@@ -12,6 +12,8 @@ Glossary:
 
 from __future__ import annotations
 
+import math
+
 
 def implied_prob(decimal_odds: float) -> float:
     """Raw implied probability from a single decimal price (includes vig)."""
@@ -85,13 +87,53 @@ def devig_power(odds: list[float], tol: float = 1e-9, max_iter: int = 100) -> li
     return [o / tot for o in out]
 
 
+def devig_shin(odds: list[float], tol: float = 1e-12, max_iter: int = 200) -> list[float]:
+    """
+    De-vig by Shin's method. The margin is modelled as the bookmaker's protection
+    against a share z of bettors who know the result, which puts more of the
+    margin on longshots. Solves for z by bisection so the probabilities sum to 1:
+
+        p_i = ( sqrt(z^2 + 4 (1 - z) q_i^2 / B) - z ) / ( 2 (1 - z) )
+
+    with q_i = 1/odds_i and B = sum of q_i. A market with no margin is returned
+    as its implied probabilities.
+    """
+    _check_odds(odds)
+    q = [1.0 / o for o in odds]
+    b = sum(q)
+    if b <= 1.0 + 1e-12:
+        return [x / b for x in q]
+
+    def probs(z: float) -> list[float]:
+        return [(math.sqrt(z * z + 4.0 * (1.0 - z) * x * x / b) - z) / (2.0 * (1.0 - z))
+                for x in q]
+
+    lo, hi = 0.0, 0.5                      # sum(probs) falls as z rises
+    if sum(probs(hi)) > 1.0:
+        raise ValueError(f"Shin de-vig could not bracket a solution for odds {odds}")
+    for _ in range(max_iter):
+        mid = (lo + hi) / 2
+        if sum(probs(mid)) > 1.0:
+            lo = mid
+        else:
+            hi = mid
+        if hi - lo < tol:
+            break
+    out = probs((lo + hi) / 2)
+    tot = sum(out)
+    return [o / tot for o in out]
+
+
+DEVIG = {"proportional": devig_proportional, "power": devig_power, "shin": devig_shin}
+
+
 def market_view(odds_map: dict[str, float], method: str = "proportional") -> dict:
     """
     Full market read for one labelled market.
 
     Args:
         odds_map: e.g. {"home": 2.10, "draw": 3.40, "away": 3.60}
-        method:   "proportional" (default) | "power"
+        method:   "proportional" (default) | "power" | "shin"
 
     Returns:
         {
@@ -104,7 +146,9 @@ def market_view(odds_map: dict[str, float], method: str = "proportional") -> dic
     """
     labels = list(odds_map.keys())
     odds = [odds_map[k] for k in labels]
-    fair = devig_power(odds) if method == "power" else devig_proportional(odds)
+    if method not in DEVIG:
+        raise ValueError(f"unknown de-vig method {method!r}; use one of {sorted(DEVIG)}")
+    fair = DEVIG[method](odds)
     return {
         "labels": labels,
         "odds": odds,
