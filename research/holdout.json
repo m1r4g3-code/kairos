@@ -2,8 +2,30 @@
   "recorded": "2026-10-02",
   "recorded_before": "any Phase 2 download, any harness run and any tuning",
   "source": "football-data.co.uk main-league files (mmz4281/<season>/<league>.csv)",
-  "leagues": ["E0", "E1", "E2", "E3", "EC", "SC0", "SC1", "SC2", "SC3", "D1", "D2",
-              "I1", "I2", "SP1", "SP2", "F1", "F2", "N1", "B1", "P1", "T1", "G1"],
+  "leagues": [
+    "E0",
+    "E1",
+    "E2",
+    "E3",
+    "EC",
+    "SC0",
+    "SC1",
+    "SC2",
+    "SC3",
+    "D1",
+    "D2",
+    "I1",
+    "I2",
+    "SP1",
+    "SP2",
+    "F1",
+    "F2",
+    "N1",
+    "B1",
+    "P1",
+    "T1",
+    "G1"
+  ],
   "development_seasons": "0001 to 2324 for every league, plus 2425 for E0, SP1, D1, I1, F1",
   "holdout": {
     "2526": "all 22 leagues",
@@ -11,8 +33,18 @@
     "2627": "all 22 leagues (season in progress; forward data, not downloaded in Phase 2)"
   },
   "already_seen": {
-    "league_seasons": ["E0 2324", "E0 2425", "SP1 2324", "SP1 2425", "D1 2324", "D1 2425",
-                       "I1 2324", "I1 2425", "F1 2324", "F1 2425"],
+    "league_seasons": [
+      "E0 2324",
+      "E0 2425",
+      "SP1 2324",
+      "SP1 2425",
+      "D1 2324",
+      "D1 2425",
+      "I1 2324",
+      "I1 2425",
+      "F1 2324",
+      "F1 2425"
+    ],
     "why": "results and closing odds were examined in the Phase 0 audit, so they cannot be holdout"
   },
   "rules": [
@@ -20,5 +52,19 @@
     "The loader refuses holdout league-seasons unless include_holdout=True with a written reason.",
     "Every holdout read is appended to research/holdout_access.jsonl and committed.",
     "Downloading a holdout file and recording its checksum, row count and column names is allowed. Reading its rows is not."
-  ]
+  ],
+  "machine": {
+    "2526": "*",
+    "2627": "*",
+    "2425": {
+      "except": [
+        "E0",
+        "SP1",
+        "D1",
+        "I1",
+        "F1"
+      ]
+    }
+  },
+  "machine_note": "Same holdout as the prose above, in the form harness/fd_data.py reads. Added after the first commit; no league-season changed."
 }

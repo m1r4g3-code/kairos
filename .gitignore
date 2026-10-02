@@ -25,3 +25,6 @@ scratch/
 # Data caches written by the live adapters (keep only the committed *_sample.* fixtures)
 engine/fixtures/*
 !engine/fixtures/*_sample.*
+
+# Phase 2 historical data (downloaded by harness/fd_fetch.py; checksums in research/data_manifest.json)
+data/
