@@ -23,7 +23,19 @@ python -c "import sys; sys.path.insert(0,'.'); sys.path.insert(0,'sources'); imp
 - `find_event` is accent-sensitive-ish — for "Málaga"/"América"/"Örgryte" use a partial ASCII hint like `'laga'`, `'rica'`.
 - Print with an ASCII-safe wrapper (`str(x).encode('ascii','replace').decode()`) — Windows cp1252 crashes on accented team names.
 
-**Status (2026-10-02): this edge is UNPROVEN.** The Phase 0 audit (`docs/audit.md`) found the backtester has look-ahead and the ledger has zero CLV observations. Don't tell the user the edge is real; say it is being tested. Engineering work follows `DEV_AGENT_BRIEF.md`, phase by phase.
+**Status (2026-10-02): this edge is UNPROVEN for SportyBet.** The old `engine/backtest.py` has look-ahead; don't quote it. The trustworthy backtest (`docs/backtest-baseline.md`) shows Bet365-vs-Pinnacle picks had CLV about +2.3% over 2,976 bets in 2012-2024, almost none of it in the five big leagues, with a return interval that includes zero. Bet365 is not SportyBet. Don't tell the user the edge is real; say it is being measured. Engineering work follows `DEV_AGENT_BRIEF.md`, phase by phase.
+
+### Gap census — log EVERY SportyBet price, bet or not
+Every time the user sends SportyBet prices for an event that has a Pinnacle line, log them (this is the measurement that decides whether the strategy lives):
+```
+python -c "import sys; sys.path.insert(0,'c:/Users/HomePC/Documents/Kairos/harness'); import census;  census.log_prices(ev, {'home': 2.10, 'draw': 3.40, 'away': 3.60}, 'soccer_epl', staked=('home',))"
+```
+- `ev` is the raw Odds API event (from `odds_api.find_event`). No Pinnacle price = nothing logged.
+- If a fetch happens within 3 hours of kickoff, call `census.log_close(ev)` for the closing price.
+- `python harness/census.py summary` prints the gap share, CLV and the kill-rule reading.
+
+### Backtest harness
+`harness/` (stdlib only): `run_baseline.py`, `test_harness.py`. Holdout seasons are in `research/holdout.json` — never load them without a written reason. Write each new variant in `research/hypotheses.md` BEFORE running it.
 
 ## The user's betting mode — value singles (since 2026-09-26)
 - **Value singles only, flat small stake** (~500). No accumulators as a strategy: a 12-of-13 DC acca returned 0, and vig compounds per leg.
