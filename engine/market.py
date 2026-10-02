@@ -108,7 +108,7 @@ def devig_shin(odds: list[float], tol: float = 1e-12, max_iter: int = 200) -> li
         return [(math.sqrt(z * z + 4.0 * (1.0 - z) * x * x / b) - z) / (2.0 * (1.0 - z))
                 for x in q]
 
-    lo, hi = 0.0, 0.5                      # sum(probs) falls as z rises
+    lo, hi = 0.0, 1.0 - 1e-9               # sum(probs) falls as z rises
     if sum(probs(hi)) > 1.0:
         raise ValueError(f"Shin de-vig could not bracket a solution for odds {odds}")
     for _ in range(max_iter):
