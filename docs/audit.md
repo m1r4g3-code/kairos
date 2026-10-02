@@ -229,6 +229,8 @@ Conclusion: the ledger shows that the loop can run. It contains no information a
 
 ## 7. What I did not check
 
+*Update, same day: the first three items were checked afterwards and are reported in `docs/research.md` (unattended run works; Understat's robots.txt disallows all access; Football-Data's notes confirm the Friday/Tuesday collection times).*
+
 - **Whether Claude Code can run unattended from a Windows scheduled task on this PC.** `claude` 2.1.287 is installed at `~/.local/bin/claude`; I did not test a headless run, login persistence, or behaviour after a reboot. The brief requires this before Phase 4 is designed.
 - **Terms of use** for The Odds API, Football-Data.co.uk, Understat and Club Elo.
 - **When Football-Data.co.uk collects its pre-match odds.** My reading of section 3 assumes Bet365 and Pinnacle pre-match columns are taken at the same time and closing columns at kickoff. That matches my memory of their notes file; I did not re-read it this session.
