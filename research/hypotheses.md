@@ -371,3 +371,23 @@ the last development seasons were weaker (2023/24: +1.2%, interval includes
 zero). Roughly 250-350 bets. Return per bet not distinguishable from zero.
 **What would change my view.** A CLV interval wholly below zero on the holdout
 would mean the development result does not carry forward to recent seasons.
+
+**A5 result (2026-10-02, `research/results/a5_development.md`, commit `4dc2be8`).**
+Killed on development data, as expected; the holdout was not read. Best k was
+0.02: model log loss 1.02178 against the market's 1.00355, difference +0.01823
+(+0.01706 to +0.01940) on 93,025 matches. Fitted log-pool weight on the model:
+0.0000 (interval 0.0000 to 0.0096). Every season's walk-forward weight was 0.
+Caveat: the best k was the smallest on the grid, so this rating is not the best
+one could build. A better rating would narrow the 0.018 gap; the published
+result for a full Dixon-Coles model is also a weight of zero.
+
+**A6 result (2026-10-02, `research/results/a6_development.md`, commit `4dc2be8`).**
+Killed on development data, as expected; the holdout was not read. Best k 0.02
+(again the grid edge): model over/under log loss 0.70346 against the market's
+0.67595, +0.02751. Log-pool weight 0.0176 (interval 0.0000 to 0.0586): the
+interval includes zero. Walk-forward blend minus market +0.00003 (-0.00008 to
++0.00015). Betting the model's opinion at Bet365's price: 30,310 bets, return
+-5.1% (-6.3 to -4.0), CLV -4.5% (-4.6 to -4.5). That CLV is Bet365's margin: the
+model's "value" bets were no better than random picks.
+
+**A7 (calibration layer) is not run.** It was conditional on A5 or A6 surviving.
