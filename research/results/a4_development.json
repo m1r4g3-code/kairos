@@ -1,0 +1,48 @@
+{
+ "actual_order": {
+  "flat 1 unit": {
+   "final": 279.7899999999996,
+   "worst_drawdown": 0.43509604416662945
+  },
+  "quarter Kelly, claimed edge": {
+   "final": 227.25118990246727,
+   "worst_drawdown": 0.22090381179129265
+  },
+  "quarter Kelly, shrunk edge, grouped": {
+   "final": 146.42457084667626,
+   "worst_drawdown": 0.10042952273984654
+  }
+ },
+ "bets": 2976,
+ "commit": "715e417",
+ "matches_with_bets": 2972,
+ "mean_claimed_ev": 0.05353259891129033,
+ "mean_clv": 0.023392941622699906,
+ "n_paths": 2000,
+ "passes_rule": false,
+ "rules": {
+  "flat 1 unit": {
+   "median_drawdown": 0.40854817486232275,
+   "median_final": 270.9199999999997,
+   "p05_final": 71.8099999999997,
+   "p95_drawdown": 0.9311352634943832,
+   "share_of_paths_below_start": 0.07
+  },
+  "quarter Kelly, claimed edge": {
+   "median_drawdown": 0.26329469087804447,
+   "median_final": 217.7822845418433,
+   "p05_final": 108.79869978124555,
+   "p95_drawdown": 0.4174226527482906,
+   "share_of_paths_below_start": 0.0365
+  },
+  "quarter Kelly, shrunk edge, grouped": {
+   "median_drawdown": 0.12379978318787253,
+   "median_final": 143.67699646119755,
+   "p05_final": 106.24189764692008,
+   "p95_drawdown": 0.20718083501006873,
+   "share_of_paths_below_start": 0.0325
+  }
+ },
+ "shrink_fitted_here": 0.4369849792173307,
+ "shrink_used": 0.4369849792173307
+}
