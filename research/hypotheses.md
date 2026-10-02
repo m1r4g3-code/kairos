@@ -391,3 +391,22 @@ interval includes zero. Walk-forward blend minus market +0.00003 (-0.00008 to
 model's "value" bets were no better than random picks.
 
 **A7 (calibration layer) is not run.** It was conditional on A5 or A6 surviving.
+
+**B0-H result (2026-10-02, `research/results/b0_holdout.md`, commit `fbc58a8`).**
+The development result did not carry forward.
+- 1X2: 169 bets, CLV **-0.1%** (-1.9 to +1.6), return per bet -1.9% (-30.7 to
+  +28.3). The development CLV of +2.3% lies outside the holdout interval.
+  By season: 2024/25 (17 leagues) 125 bets, CLV -0.3% (-2.4 to +1.7); 2025/26
+  44 bets, CLV +0.5% (-2.6 to +3.4).
+- With the proportional de-vig the same bets read +1.9% (+0.2 to +3.5). A2
+  showed power is the more accurate method, so the power figure is the one to
+  trust; the disagreement is recorded because it now changes the sign.
+- Over/under 2.5: 19 bets, CLV +3.0% (+0.4 to +5.6), return -29.2% (-70.9 to
+  +13.4). Too few bets to conclude anything.
+- I expected "positive but smaller". It came out at zero.
+- Coverage finding: in 2025/26 the files carry a Pinnacle pre-match price for
+  only 2,931 of 7,646 matches, none after 15 January 2026. Football-Data has
+  stopped being a source of Pinnacle prices. (A second logged holdout read
+  counted price coverage only; no results were used.)
+- Holdout reads so far: three (A3 handicap test, B0-H, the coverage count), 117
+  lines in `research/holdout_access.jsonl`.
