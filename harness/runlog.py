@@ -1,36 +1,12 @@
 """
-KAIROS harness — run log. Every variant that is run gets one line in
-research/runs.jsonl, whether it worked or not. Lines are never removed.
-
-Pure stdlib.
+The run log now lives in core/runlog.py (sport-agnostic, reusable by other agents).
+This file keeps `import runlog` and existing commands working.
 """
-
-from __future__ import annotations
-
-import datetime as dt
-import json
 import os
-import subprocess
+import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RUNS = os.path.join(ROOT, "research", "runs.jsonl")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core import runlog as _impl  # noqa: E402
 
-
-def git_commit() -> str:
-    try:
-        out = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
-                             capture_output=True, text=True, timeout=10)
-        dirty = subprocess.run(["git", "status", "--porcelain", "--", "harness", "engine"],
-                               cwd=ROOT, capture_output=True, text=True, timeout=10)
-        return out.stdout.strip() + ("+dirty" if dirty.stdout.strip() else "")
-    except (OSError, subprocess.SubprocessError):
-        return "unknown"
-
-
-def append(hypothesis: str, variant: str, scope: str, result: dict, path: str = RUNS) -> dict:
-    rec = {"utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-           "commit": git_commit(), "hypothesis": hypothesis, "variant": variant,
-           "scope": scope, "result": result}
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, sort_keys=True) + "\n")
-    return rec
+if __name__ != "__main__":
+    sys.modules[__name__] = _impl

@@ -14,13 +14,44 @@ full result for each are in `research/hypotheses.md`; the tables are in
 | A2 De-vig bake-off (proportional, power, Shin) | **No change**: power, the current method, is best | no |
 | A3 Price cousin markets from the sharp line | **Merged** for handicaps from 1X2 + total; **killed** for totals from 1X2 alone | yes, once |
 | A4 Same-match exposure and Kelly shrinkage | Exposure fix shipped; shrinkage **dropped** | no |
-| A5 Fitted ratings blended with the market | Not started (see questions) | |
-| A6 Shot-and-corner ratings for totals | Not started | |
-| A7 Calibration layer | Only relevant if A5 or A6 survives | |
+| A5 Goal-based team ratings blended with the market | **Killed** on development data | no |
+| A6 Shots-on-target ratings for totals | **Killed** on development data | no |
+| A7 Calibration layer | Not run: it depended on A5 or A6 surviving | no |
+| B0-H The frozen baseline on the holdout | **The development edge did not carry forward** | yes |
+| Package split (`core/`) | Done, with shims and tests | |
 
-The betting baseline (B0) is unchanged by anything merged so far: no merged item
-alters which 1X2 or over/under 2.5 bets Kairos v2 selects. B0's holdout numbers
-have still not been computed.
+No merged item alters which 1X2 or over/under 2.5 bets Kairos v2 selects. The
+holdout was read three times in all: the A3 handicap test, B0-H, and a count of
+price coverage. Every read is in `research/holdout_access.jsonl`.
+
+## The headline: the baseline on the holdout (B0-H)
+
+| Data | Bets (1X2) | CLV | 95% interval | Return per bet | 95% interval |
+|---|---|---|---|---|---|
+| Development, 2012/13–2023/24 (+ five leagues 2024/25) | 2,976 | +2.3% | +1.9 to +2.8 | +6.0% | −1.2 to +13.4 |
+| **Holdout, 2024/25 (17 leagues) and 2025/26** | **169** | **−0.1%** | **−1.9 to +1.6** | −1.9% | −30.7 to +28.3 |
+| Holdout, 2024/25 only | 125 | −0.3% | −2.4 to +1.7 | +3.5% | −28.5 to +39.6 |
+| Holdout, 2025/26 only | 44 | +0.5% | −2.6 to +3.4 | −17.0% | −60.0 to +31.5 |
+
+- The development figure of +2.3% lies outside the holdout interval. On the most
+  recent seasons, betting where Bet365 beat Pinnacle's fair price by 3% picked
+  prices no better than the closing line.
+- This fits the trend already visible in development data: the number of
+  qualifying bets fell after 2018/19 and the 2023/24 CLV interval included zero.
+- With the proportional de-vig the same 169 bets read +1.9% (+0.2 to +3.5). A2
+  found the power method more accurate, so −0.1% is the figure to trust. The
+  sign now depends on the method, which is itself a sign of how little is there.
+- Over/under 2.5: 19 bets, CLV +3.0% (+0.4 to +5.6), return −29.2% (−70.9 to
+  +13.4). Too few to conclude anything.
+- I predicted "positive but smaller". It was zero.
+- **Football-Data no longer carries Pinnacle.** In 2025/26 only 2,931 of 7,646
+  matches have a Pinnacle pre-match price, none after 15 January 2026. Future
+  seasons cannot be backtested this way; Pinnacle prices will have to come from
+  The Odds API and be stored as they are seen.
+
+What this means: the only historical evidence for the strategy is in older
+seasons, at a different bookmaker, and it has faded. Whether SportyBet is softer
+than Bet365 was in 2024–26 is unknown, and the gap census is the way to find out.
 
 ## Preconditions: defects from the audit
 
@@ -116,11 +147,50 @@ One thing for the owner: flat stakes of 1% of the starting bankroll on bets
 averaging odds near 5 gave a one-in-twenty chance of losing 93% of the peak
 bankroll at some point, in a history where the average return was positive.
 
-## What is not done yet
+## A5. Goal-based ratings blended with the market — killed
 
-- A5, A6, A7.
-- Separating the staking, ledger and paper-trading code from the football code
-  into its own package (required by the brief before Phase 4).
-- B0 on the holdout.
+Online attack and defence ratings per team (standard library only), warmed from
+2000/01, blended with Pinnacle's pre-match price by a fitted log-pool weight.
+
+| | Value |
+|---|---|
+| Model log loss (best k = 0.02) | 1.02178 |
+| Pinnacle pre-match log loss | 1.00355 |
+| Difference | +0.01823 (+0.01706 to +0.01940), 93,025 matches |
+| Fitted weight on the model | **0.0000** (0.0000 to 0.0096) |
+| Walk-forward weight, every season | 0.000 |
+
+The market gets all the weight. The best k was the smallest tried, so a better
+rating could be built, but the published result for a full Dixon-Coles model is
+the same zero. Holdout not read.
+
+## A6. Shots-on-target ratings for totals — killed
+
+The same rating on shots on target, converted to goals by the league's running
+conversion rate, against Pinnacle's over/under 2.5.
+
+| | Value |
+|---|---|
+| Model log loss (best k = 0.02) | 0.70346 against the market's 0.67595 |
+| Fitted weight on the model | 0.0176 (0.0000 to 0.0586) |
+| Walk-forward blend minus market | +0.00003 (−0.00008 to +0.00015) |
+| Betting the model at Bet365's price, +3% | 30,310 bets, return −5.1% (−6.3 to −4.0), CLV −4.5% (−4.6 to −4.5) |
+
+A CLV of −4.5% is Bet365's margin: the model's picks were no better than random
+ones. Holdout not read.
+
+## Package split
+
+`core/` now holds everything that is not football: `staking.py`, `devig.py`,
+`ledger.py` (settlement is pluggable; football rules are in `engine/settle.py`),
+`metrics.py`, `runlog.py`. `core/test_core.py` runs the package on a yes/no
+contract and checks that importing it loads no football module. The old module
+names (`engine/kelly.py`, `engine/market.py`, `engine/ledger.py`,
+`harness/metrics.py`, `harness/runlog.py`) are now shims, so every existing
+import, test and command still works. The census stays in `harness/` until
+Phase 4 builds the paper-trading loop around it.
+
+## What is not done
+
 - The model path (`run.py`) has never been backtested: its inputs are set by
   judgment per match, so there is no history to replay.

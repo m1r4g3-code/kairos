@@ -7,7 +7,7 @@
 [![Version](https://img.shields.io/badge/version-2.0.0-blueviolet.svg)](https://github.com/m1r4g3-code/kairos/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-292%20passing-success.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-318%20passing-success.svg)](#testing)
 [![CI](https://github.com/m1r4g3-code/kairos/actions/workflows/tests.yml/badge.svg)](https://github.com/m1r4g3-code/kairos/actions/workflows/tests.yml)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](#license)
 
@@ -33,15 +33,17 @@ Kairos **never places bets, stores credentials, or moves money.** It outputs pic
 
 ## Status of the evidence (read this first)
 
-**Kairos does not claim a proven edge.** What has been measured so far:
+**Kairos does not claim an edge.** On the seasons held back for testing, its core strategy showed none. What has been measured so far:
 
 | Question | Answer | Where |
 |---|---|---|
 | Does "bet where a soft book beats Pinnacle's fair price by 3%" pick good prices in history? | Over 2,976 bets (22 leagues, 2012–2024, Bet365 as the soft book) the closing-line value was **+2.3%** (95% interval +1.9 to +2.8). | [`docs/backtest-baseline.md`](docs/backtest-baseline.md) |
 | Did it make money in that history? | Return per bet **+6.0%**, interval **−1.2% to +13.4%**. The interval includes zero. | same |
 | Where does it come from? | Almost none from the five biggest leagues (CLV +0.8%, interval includes zero). | same |
+| Does it hold on seasons kept aside (2024/25 and 2025/26)? | **No.** 169 bets, closing-line value **−0.1%** (−1.9 to +1.6). The edge seen in 2012–2024 was not there in the most recent seasons. | [`docs/engine-improvements.md`](docs/engine-improvements.md) |
 | Is that proof for a different bookmaker today? | **No.** The two historical prices may not have been collected at the same minute, soft bookmakers limit winning accounts, and the live bookmaker has not been measured. A forward price census is running to measure it. | [`harness/census.py`](harness/census.py) |
-| Does a goal model or an LLM beat the sharp closing price? | Public evidence says no. | [`docs/research.md`](docs/research.md) |
+| Does a team-rating model add anything to the sharp price? | No. Blended with Pinnacle's price, a goal-based rating got a fitted weight of 0.000 over 93,025 matches; a shots-based rating for totals lost 4.5% to the close. | [`docs/engine-improvements.md`](docs/engine-improvements.md) |
+| Does an LLM beat the sharp closing price? | Public evidence says no. | [`docs/research.md`](docs/research.md) |
 
 An earlier backtester in this repo ([`engine/backtest.py`](engine/backtest.py)) selected bets with the *closing* price and staked them at an earlier price. That is look-ahead; its output is not evidence and it now says so when run. The full audit is in [`docs/audit.md`](docs/audit.md).
 
@@ -97,19 +99,24 @@ Kairos/
 ├── KAIROS.md                # operating charter — loaded first every session
 ├── knowledge/               # the anatomy, playbooks and priors
 ├── protocols/               # step-by-step reasoning runbooks
-├── engine/                  # zero-dependency math + data adapters
+├── core/                    # sport-agnostic, reusable by other agents (stdlib only)
+│   ├── staking.py            #   EV + fractional Kelly + caps (one event = one position)
+│   ├── devig.py              #   de-vig: proportional, power, Shin
+│   ├── ledger.py             #   predictions → results → Brier / ROI / CLV; pluggable settlement
+│   ├── metrics.py            #   log loss, Brier, RPS, buckets, bootstrap intervals
+│   ├── runlog.py             #   append-only log of every variant run
+│   └── test_core.py          #   12 checks, including "imports no football code"
+├── engine/                  # football: math + data adapters (kelly/market/ledger are shims to core)
 │   ├── constants.py          #   all tunable parameters in one place
 │   ├── config.py             #   .env loader (Odds API key); gitignored secret
-│   ├── market.py             #   de-vig: proportional, power, Shin
+│   ├── settle.py             #   football settlement rules for the ledger
 │   ├── edge.py               #   sharp-line comparison (the core)
 │   ├── derive.py             #   goal lines, Asian handicaps, double chance from the sharp line
 │   ├── poisson.py            #   Poisson + Dixon-Coles → score matrix → markets
 │   ├── elo.py                #   Elo / strengths → expected goals
 │   ├── monte_carlo.py        #   simulation check (same rho as the analytic engine)
-│   ├── kelly.py              #   EV + fractional Kelly + caps (one match = one position)
 │   ├── run.py                #   model-path orchestrator (+ fragility test)
 │   ├── report.py             #   plain-English card renderer
-│   ├── ledger.py             #   predictions → results → Brier / ROI / CLV, raw vs adjusted
 │   ├── backtest.py           #   OLD backtester, has look-ahead, kept for reference only
 │   ├── sources/              #   odds_api (needs key), clubelo, footballdata,
 │   │                         #   understat (parser only; live fetch disabled, robots.txt)
@@ -119,11 +126,12 @@ Kairos/
 │   ├── fd_fetch.py           #   polite, resumable download of Football-Data files
 │   ├── fd_data.py            #   loader: PreMatch / Post split, holdout guard
 │   ├── walk.py               #   walk-forward runner + leak check
-│   ├── metrics.py score.py   #   log loss, Brier, RPS, buckets, bootstrap intervals, CLV
+│   ├── score.py              #   settles bets, CLV, collects forecasts
+│   ├── ratings.py            #   online team ratings + log pool (tested, not adopted)
 │   ├── strategies.py         #   baseline and variants
-│   ├── run_baseline.py run_a1.py … run_a4.py
+│   ├── run_baseline.py run_a1.py … run_a56.py run_b0_holdout.py
 │   ├── census.py             #   forward log of soft-book prices against Pinnacle
-│   └── test_harness.py       #   103 checks
+│   └── test_harness.py       #   117 checks
 ├── research/                # holdout.json, hypotheses.md, runs.jsonl, results/
 ├── docs/                    # audit, research review, backtest baseline, improvements
 ├── ledger/                  # predictions, results, census
@@ -165,14 +173,15 @@ A result for an unknown id, or a second result for the same id, is refused. **Cl
 
 ## Testing
 
-**292 deterministic checks** across five suites, run on every push via [GitHub Actions](.github/workflows/tests.yml) (Python 3.10 / 3.11 / 3.12). Everything runs offline against made-up fixtures — no network, no key.
+**318 deterministic checks** across six suites, run on every push via [GitHub Actions](.github/workflows/tests.yml) (Python 3.10 / 3.11 / 3.12). Everything runs offline against made-up fixtures — no network, no key.
 
 ```bash
 python engine/test_engine.py    # math, de-vig, derive, staking, orchestration
 python engine/test_ledger.py    # persistence, settling, result validation
 python engine/test_edge.py      # sharp reference, parsers, event matching
 python engine/test_sources.py   # data-adapter parsers
-python harness/test_harness.py  # loader, walk-forward, leak tests, metrics, census
+python harness/test_harness.py  # loader, walk-forward, leak tests, ratings, census
+python core/test_core.py        # the sport-agnostic package on a non-football market
 ```
 
 The harness leak tests check that a strategy never sees a result dated on or after the day its odds were collected, and that scrambling every result and closing price changes no decision.

@@ -5,6 +5,11 @@ Written 2026-10-02 on branch `dev/phase-2-backtest`. Every number here comes fro
 written by `harness/run_baseline.py` (commit `34aabe4`) and `harness/run_slices.py`
 (commit `1bcf4d8`). The holdout seasons have not been opened.
 
+> **Update, end of Phase 3 (same day).** The frozen baseline was later run on the
+> holdout seasons: 169 1X2 bets, CLV −0.1% (−1.9 to +1.6). The positive CLV
+> reported below for 2012–2024 did not carry forward to 2024/25–2025/26. See
+> `docs/engine-improvements.md`. Everything below describes development data only.
+
 ## Summary
 
 1. **The harness exists and passes its leak tests.** It walks 183,427 matches from

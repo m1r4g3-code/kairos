@@ -160,7 +160,7 @@ def test_kelly() -> None:
             for i in range(5)]
     capped = kelly.cap_total_exposure(bets, bankroll=100.0)
     total = sum(s.stake_fraction for s in capped if s.bet)
-    check("combined exposure capped", total <= kelly.constants.MAX_EXPOSURE + TOL,
+    check("combined exposure capped", total <= kelly.MAX_EXPOSURE + TOL,
           f"total={total}")
 
 

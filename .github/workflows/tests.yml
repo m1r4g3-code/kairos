@@ -40,3 +40,6 @@ jobs:
       - name: Backtest harness tests (offline, synthetic data)
         working-directory: harness
         run: python test_harness.py
+
+      - name: Core package tests (sport-agnostic staking, de-vig, ledger, metrics)
+        run: python core/test_core.py

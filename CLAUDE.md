@@ -25,7 +25,13 @@ python -c "import sys; sys.path.insert(0,'.'); sys.path.insert(0,'sources'); imp
 - `odds_api.parse_lines(ev, 'totals' | 'spreads')` → per book `{line, over, under}` or `{line, home, away}`.
 - Print with an ASCII-safe wrapper (`str(x).encode('ascii','replace').decode()`) — Windows cp1252 crashes on accented team names.
 
-**Status (2026-10-02): this edge is UNPROVEN for SportyBet.** The old `engine/backtest.py` has look-ahead; don't quote it. The trustworthy backtest (`docs/backtest-baseline.md`) shows Bet365-vs-Pinnacle picks had CLV about +2.3% over 2,976 bets in 2012-2024, almost none of it in the five big leagues, with a return interval that includes zero. Bet365 is not SportyBet. Don't tell the user the edge is real; say it is being measured. Engineering work follows `DEV_AGENT_BRIEF.md`, phase by phase.
+**Status (2026-10-02): NO EDGE HAS BEEN SHOWN.** Don't tell the user the edge is real.
+- Old `engine/backtest.py` has look-ahead; never quote it.
+- Trustworthy backtest, 2012–2024, Bet365 vs Pinnacle at +3%: CLV +2.3% over 2,976 bets, return interval includes zero, nothing in the five big leagues (`docs/backtest-baseline.md`).
+- **Held-out seasons 2024/25–2025/26: 169 bets, CLV −0.1% (−1.9 to +1.6).** The historical edge did not carry into recent seasons (`docs/engine-improvements.md`).
+- Bet365 is not SportyBet, so SportyBet is still unmeasured. The gap census below is the only thing that can measure it. Until it has ~1,000 prices, say "being measured" and keep stakes small and flat.
+- Rating models (goals, shots) add nothing to Pinnacle's price: tested, weight 0.
+Engineering work follows `DEV_AGENT_BRIEF.md`, phase by phase.
 
 ### Gap census — log EVERY SportyBet price, bet or not
 Every time the user sends SportyBet prices for an event that has a Pinnacle line, log them (this is the measurement that decides whether the strategy lives):
@@ -37,7 +43,7 @@ python -c "import sys; sys.path.insert(0,'c:/Users/HomePC/Documents/Kairos/harne
 - `python harness/census.py summary` prints the gap share, CLV and the kill-rule reading.
 
 ### Backtest harness
-`harness/` (stdlib only): `run_baseline.py`, `run_a1.py`…`run_a4.py`, `test_harness.py`. Outcomes of every proposal: `docs/engine-improvements.md`. Holdout seasons are in `research/holdout.json` — never load them without a written reason. Write each new variant in `research/hypotheses.md` BEFORE running it.
+`harness/` (stdlib only): `run_baseline.py`, `run_a1.py`…`run_a4.py`, `test_harness.py`. Outcomes of every proposal: `docs/engine-improvements.md`. Sport-agnostic code (staking, de-vig, ledger, metrics) lives in `core/`; `engine/kelly.py`, `market.py`, `ledger.py` are shims, so old imports and `python engine/ledger.py …` still work. Holdout seasons are in `research/holdout.json` — never load them without a written reason. Write each new variant in `research/hypotheses.md` BEFORE running it.
 
 ## The user's betting mode — value singles (since 2026-09-26)
 - **Value singles only, flat small stake** (~500). No accumulators as a strategy: a 12-of-13 DC acca returned 0, and vig compounds per leg.

@@ -8,6 +8,12 @@ Pure stdlib. No API keys.
 
 from __future__ import annotations
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core import staking as _staking  # noqa: E402
+
 # ── Poisson / Dixon-Coles ────────────────────────────────────────────────────
 DEFAULT_RHO = -0.10          # typical fitted low-score dependence for top-league football
 RHO_MIN, RHO_MAX = -0.20, 0.20  # safe band: keeps the DC tau factors non-negative
@@ -24,11 +30,12 @@ MC_DEFAULT_N = 30_000        # simulation count used by the orchestrator
 MC_SEED = 7                  # fixed seed: reproducible cross-check of the analytic engine
 
 # ── Value (L15) + Staking (L16) ──────────────────────────────────────────────
-DEFAULT_FRACTION = 0.25      # ¼ Kelly
-DEFAULT_CAP = 0.05           # max 5% of bankroll on a single bet
-CONFIDENCE_FLOOR = 45.0      # below this → stake 0 (pass)
-MIN_EDGE = 0.03              # require +3% EV to bet
-MAX_EXPOSURE = 0.15          # max combined live exposure across all active bets
+# Defined once, in core/staking.py; re-exported here for the football engine.
+DEFAULT_FRACTION = _staking.DEFAULT_FRACTION
+DEFAULT_CAP = _staking.DEFAULT_CAP
+CONFIDENCE_FLOOR = _staking.CONFIDENCE_FLOOR
+MIN_EDGE = _staking.MIN_EDGE
+MAX_EXPOSURE = _staking.MAX_EXPOSURE
 
 # ── Judgment modifiers ───────────────────────────────────────────────────────
 # A qualitative nudge may move expected goals by at most 20% either way
