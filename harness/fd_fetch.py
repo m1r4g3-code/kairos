@@ -72,14 +72,14 @@ def _save_json(path: str, obj) -> None:
 
 
 def fetch_one(league: str, season: str, timeout: float = 30.0) -> str:
-    """Fetch one file. Returns 'ok', 'missing' (HTTP 404) or 'limited' (HTTP 429)."""
+    """Fetch one file. Returns 'ok', 'missing' (HTTP 404 or 300) or 'limited' (HTTP 429)."""
     req = urllib.request.Request(f"{BASE}/{season}/{league}.csv",
                                  headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = resp.read()
     except urllib.error.HTTPError as e:
-        if e.code == 404:
+        if e.code in (300, 404):        # the site answers 300 for a season it never had
             return "missing"
         if e.code == 429:
             return "limited"
