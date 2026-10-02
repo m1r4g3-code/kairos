@@ -17,10 +17,12 @@ python -c "import sys; sys.path.insert(0,'.'); sys.path.insert(0,'sources'); imp
  ev=odds_api.find_event(evs,'Home hint','Away hint'); p=odds_api.parse_event(ev); \
  f=edge.sharp_fair(p['books'])['fair_prob']; print(edge.value_vs_sharp(sb_odds, f))"
 ```
-- `edge.sharp_fair(books)` → picks Pinnacle (else consensus), returns `{source, fair_prob, n_books}`.
+- `edge.sharp_fair(books)` → picks Pinnacle (else a consensus of **3+** books), returns `{source, sharp, fair_prob, n_books, others_median, n_others}`. It returns **None** when there is no Pinnacle and fewer than 3 books: that is "no sharp line → skip", not an error to work around.
+- `others_median` is what the other books think. If Pinnacle's `fair_prob` is far above it, say so; the backtest found those bets were not worse, so it is a note, not a veto.
 - `edge.value_vs_sharp(sb_odds, fair, min_edge=0.03)` → EV per selection.
-- **`fetch_raw` always overwrites `odds_<sport>.json`** — fetching `totals` clobbers the `h2h` cache; re-fetch h2h after, or use `cache=False`.
-- `find_event` is accent-sensitive-ish — for "Málaga"/"América"/"Örgryte" use a partial ASCII hint like `'laga'`, `'rica'`.
+- `fetch_raw` caches h2h to `odds_<sport>.json` and other markets to `odds_<sport>_<markets>.json` (totals no longer overwrite h2h).
+- `find_event` folds accents ("Malaga" matches "Málaga"). If the hints match more than one event it raises an error listing them — give a more specific hint, never take the first.
+- `odds_api.parse_lines(ev, 'totals' | 'spreads')` → per book `{line, over, under}` or `{line, home, away}`.
 - Print with an ASCII-safe wrapper (`str(x).encode('ascii','replace').decode()`) — Windows cp1252 crashes on accented team names.
 
 **Status (2026-10-02): this edge is UNPROVEN for SportyBet.** The old `engine/backtest.py` has look-ahead; don't quote it. The trustworthy backtest (`docs/backtest-baseline.md`) shows Bet365-vs-Pinnacle picks had CLV about +2.3% over 2,976 bets in 2012-2024, almost none of it in the five big leagues, with a return interval that includes zero. Bet365 is not SportyBet. Don't tell the user the edge is real; say it is being measured. Engineering work follows `DEV_AGENT_BRIEF.md`, phase by phase.
@@ -35,7 +37,7 @@ python -c "import sys; sys.path.insert(0,'c:/Users/HomePC/Documents/Kairos/harne
 - `python harness/census.py summary` prints the gap share, CLV and the kill-rule reading.
 
 ### Backtest harness
-`harness/` (stdlib only): `run_baseline.py`, `test_harness.py`. Holdout seasons are in `research/holdout.json` — never load them without a written reason. Write each new variant in `research/hypotheses.md` BEFORE running it.
+`harness/` (stdlib only): `run_baseline.py`, `run_a1.py`…`run_a4.py`, `test_harness.py`. Outcomes of every proposal: `docs/engine-improvements.md`. Holdout seasons are in `research/holdout.json` — never load them without a written reason. Write each new variant in `research/hypotheses.md` BEFORE running it.
 
 ## The user's betting mode — value singles (since 2026-09-26)
 - **Value singles only, flat small stake** (~500). No accumulators as a strategy: a 12-of-13 DC acca returned 0, and vig compounds per leg.
@@ -46,12 +48,34 @@ python -c "import sys; sys.path.insert(0,'c:/Users/HomePC/Documents/Kairos/harne
 ## Basketball (added — sport-agnostic edge)
 `edge.py` works on any sport. Basketball differences: **no draw** (2-way h2h), no Double Chance. Main sharp markets = **moneyline (h2h), spread (spreads/handicap), total (totals)** — spreads & totals are where basketball value lives; lines are very sharp. Covered game-level: **NBA** (Oct–Jun), **WNBA** (May–Sep) via `basketball_nba` / `basketball_wnba` (regions `us,uk,eu`). No EuroLeague/NCAAB games in this account's feed. De-vig a 2-way market the same way; no DC-acca style here — treat as single-value / spread bets.
 
+### Cousin markets — `engine/derive.py`
+For goal lines, Asian handicaps, double chance and draw-no-bet, fit to Pinnacle and read the market off the fit:
+```
+fair = edge.sharp_fair(p['books'])['fair_prob']                      # Pinnacle 1X2
+t = odds_api.parse_lines(ev_totals, 'totals')['pinnacle']            # Pinnacle total, any line
+lh, la = derive.fit_from_1x2_and_total_prices(fair, t['line'], t['over'], t['under'])
+m = poisson.score_matrix(lh, la)
+s = derive.handicap_settlement(m, -0.25, 'home')    # or derive.total_settlement(m, 2.75, 'over')
+derive.fair_price(s); derive.settlement_ev(s, sportybet_price)
+derive.double_chance(fair)                           # straight from the fair 1X2
+```
+- **Never price a total from 1X2 alone** — tested and killed (4 points off Pinnacle on average).
+- A derived handicap price is about 0.6 points of probability off Pinnacle's own. Ask for **+5% or more** before calling a derived-price bet value, and say it is a derived price.
+- Quarter lines are settled as two half stakes (the September Real Madrid Under phantom was this).
+
 ## Market-switching workflow
 When 1X2 has no value/confidence, proactively check the **cousins**: O/U (totals), Handicap (spreads), Double Chance (derive from 1X2), To-Qualify (knockouts, derive from 1X2 + ET model). Give the user the sharp **fair bar** and ask for SportyBet's number in that market.
 
 ## Coverage — only bet what has a sharp line
 **Covered by The Odds API** (verifiable): EPL, EFL Champ/L1/L2/Cup, La Liga + La Liga 2, Serie A + B + Coppa, Bundesliga 1/2/3 + Pokal, Ligue 1/2, Eredivisie, Portugal, Turkey, Greece, Scotland, Belgium, Austria, Switzerland, Russia, Poland, Denmark, Sweden (Allsvenskan/Superettan), Norway, Finland, Ireland, Saudi, J-League, K-League, China, MLS, Liga MX, Brazil Série A + B, Argentina Primera, Chile, Copa Libertadores/Sudamericana, UCL qualifiers, Nations League — plus non-soccer: NFL/NCAAF/CFL, NBA/WNBA, MLB/KBO/NPB, NHL, AFL, NRL, tennis (ATP/WTA), cricket, MMA/boxing.
 **NOT covered = always skip** (no sharp reference): Uruguay, Peru, Venezuela, Ecuador, Bolivia, Costa Rica, Panama, Colombia lower, Argentina 2nd tier (Primera Nacional), Brazil Série C/D + state leagues (Baiano/Catarinense/Mineiro/etc.) + women's, USL (all), MLS Next Pro, Canadian Premier, youth/U20/U23 internationals, Mexico Liga Premier, small regional leagues.
+
+## Engine rules changed on 2026-10-02
+- Modifiers outside 0.80–1.20 are rejected by `run.py`.
+- A fragile ("speculative") candidate has `bet: false` and no stake.
+- `ledger.record_result` refuses an unknown id and a second result (use `correction=True` to fix one). Pass `closing_fair_prob` (Pinnacle's de-vigged closing probability) for fair CLV.
+- Log `raw_prob` next to `my_prob` on every model-path pick so the judgment layer can be scored.
+- All bets on one match together are capped at 5% of bankroll.
 
 ## Hard discipline (learned the hard way)
 - **A huge "edge" is a BUG, not a bet.** Real value is a quiet 2–5%. Any 30–70% "edge" = missing/thin Pinnacle line (single non-Pinnacle book, two-legged-tie mismatch) or my own model error. Suspect myself first. (Craiova +73% mirage; my own quarter-line +7.5% phantom.)
