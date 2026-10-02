@@ -100,7 +100,7 @@ Five seasons are positive and five negative. The higher thresholds (5%, 8%, 10%)
 
 ### 3c. Diagnostic: the same rule without look-ahead
 
-Scratch script (not in the repo) over the same ten cached files. Rule B selects with Pinnacle's pre-match odds (`PSH/PSD/PSA`), the same snapshot as the Bet365 price. CLV is measured against the fair closing price. Intervals are 95%, bootstrapped by match, 4,000 resamples.
+Script: `research/lookahead_diag.py` (run `python research/lookahead_diag.py`), over the same ten cached files. Rule B selects with Pinnacle's pre-match odds (`PSH/PSD/PSA`), the same snapshot as the Bet365 price. CLV is measured against the fair closing price. Intervals are 95%, bootstrapped by match, 4,000 resamples.
 
 | Threshold | Rule | Bets | ROI (95% interval) | CLV vs fair close (95% interval) |
 |---|---|---|---|---|
