@@ -93,3 +93,50 @@ descriptions**, not tests, and nothing is selected from them.
   leans on the de-vig method being right in the tail.
 - **Expected:** most bets and most of the CLV at odds above 5; the two de-vig
   methods disagree most there.
+
+---
+
+## Phase 3 entries
+
+### A1. Checked sharp reference (written 2026-10-02, before any A1 run)
+
+**Idea (docs/research.md, proposal A1).** A bet is suspect when Pinnacle stands
+alone: Pinnacle rates the selection clearly more likely than the other
+bookmakers do. That was the shape of the Craiova and Shamrock mirages.
+
+**Definitions.**
+- Start from the B0 1X2 bets (Bet365 against Pinnacle pre-match, +3%).
+- *Others* = named soft bookmakers in the file other than Bet365 (no Pinnacle, no
+  exchange, no Max/Avg). At least 3 are needed; with fewer the bet is "unchecked"
+  and is kept.
+- *Gap* = Pinnacle fair probability for the selection / median of the others'
+  fair probabilities (each de-vigged by the power method) - 1.
+- *Gate G(r)*: skip the bet when gap > r. Grid, fixed now: r = 5%, 10%, 15%.
+- *Checked blend forecast*: Pinnacle's fair probabilities, except when any
+  selection's gap is beyond +/- r, in which case the normalised geometric mean
+  of Pinnacle and the others' median.
+
+**Development analysis.** For each r: bets, CLV and return of kept and flagged
+bets, and the CLV difference (kept minus flagged) with a match-clustered
+bootstrap interval. Log loss of Pinnacle alone, the others' median alone, and
+the checked blend, on matches with at least 3 others.
+
+**Choice rule on development data.** Take the largest r whose flagged group has
+at least 30 bets and whose CLV difference interval lies wholly above zero. If no
+r qualifies, A1's gate is dropped here and the holdout is not read for it.
+
+**Holdout rule (only if an r was chosen).** Merge the gate only if, on the
+holdout, the CLV difference interval lies wholly above zero and the checked
+blend's log loss is not worse than Pinnacle alone (the interval of the
+difference does not lie wholly above zero). The B0 holdout numbers are computed
+in the same run.
+
+**Expected.** Not confident. Two stories pull opposite ways. If Pinnacle alone
+means Pinnacle is wrong, flagged bets have lower CLV. If Pinnacle alone means
+Pinnacle moved first and the soft books lag, flagged bets have higher CLV and
+the gate would remove the best bets. The S3 slice (claimed edge of 15%+ had
+lower CLV) leans to the first story for large gaps. Guess: flagged CLV is lower
+at r = 15% and no different at r = 5%.
+
+**Not testable on this data, shipped as a defect fix instead (audit 5a #9):** no
+fallback to a consensus of fewer than 3 soft books.
