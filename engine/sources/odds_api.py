@@ -95,6 +95,40 @@ def parse_event(event: dict) -> dict:
             "commence": event.get("commence_time"), "books": books}
 
 
+def parse_lines(event: dict, market: str = "totals") -> dict[str, dict]:
+    """
+    Flatten the totals or spreads market of one event:
+
+      totals   {book: {"line": 2.5,  "over": 1.95, "under": 1.87}}
+      spreads  {book: {"line": -0.5, "home": 1.93, "away": 1.89}}   line = home handicap
+
+    A book that quotes several lines keeps the first one listed. Books with an
+    incomplete pair are left out.
+    """
+    if market not in ("totals", "spreads"):
+        raise ValueError("market must be 'totals' or 'spreads'")
+    home, away = event.get("home_team"), event.get("away_team")
+    out: dict[str, dict] = {}
+    for bk in event.get("bookmakers", []):
+        for mkt in bk.get("markets", []):
+            if mkt.get("key") != market:
+                continue
+            row: dict = {}
+            for o in mkt.get("outcomes", []):
+                name, price, point = o.get("name"), o.get("price"), o.get("point")
+                if market == "totals" and name in ("Over", "Under"):
+                    row.setdefault(name.lower(), price)
+                    row.setdefault("line", point)
+                elif market == "spreads" and name in (home, away):
+                    row.setdefault("home" if name == home else "away", price)
+                    if name == home:
+                        row.setdefault("line", point)
+            need = ("over", "under") if market == "totals" else ("home", "away")
+            if all(k in row for k in need) and row.get("line") is not None:
+                out.setdefault(bk["key"], row)
+    return out
+
+
 def find_event(events: list[dict], home_hint: str, away_hint: str) -> dict | None:
     """
     Match a screenshot fixture to an Odds API event by team-name substring.

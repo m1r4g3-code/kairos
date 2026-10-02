@@ -40,7 +40,7 @@ written by `harness/run_baseline.py` (commit `34aabe4`) and `harness/run_slices.
 | `harness/run_baseline.py`, `run_slices.py` | Produce the result files. |
 | `harness/runlog.py` | Appends every variant run to `research/runs.jsonl`. |
 | `harness/census.py` | The SportyBet gap census (section 7). |
-| `harness/test_harness.py` | 85 checks. Added to the CI workflow. |
+| `harness/test_harness.py` | 84 checks at the end of Phase 2. Added to the CI workflow. |
 | `research/holdout.json` | The holdout seasons, committed before any download. |
 | `research/hypotheses.md` | Each variant, written before it was run. |
 
@@ -348,4 +348,4 @@ outcomes at +3% with positive CLV. The earlier statement was too broad.
 | `engine/test_ledger.py` | 13 | pass |
 | `engine/test_edge.py` | 28 | pass |
 | `engine/test_sources.py` | 16 | pass |
-| `harness/test_harness.py` | 85 | pass |
+| `harness/test_harness.py` | 84 | pass |

@@ -404,6 +404,16 @@ def test_derive() -> None:
         check(f"1X2+total fit recovers lambdas {lh0}/{la0}",
               abs(lh2 - lh0) < 1e-5 and abs(la2 - la0) < 1e-5, f"{lh2}, {la2}")
 
+    # Fit from quoted prices at any line, with a 4% margin on both sides.
+    for line in (2.25, 2.5, 2.75, 3.0):
+        m0 = poisson.score_matrix(1.7, 1.0)
+        fair0 = poisson.outcome_1x2(m0, ndigits=None)
+        o = derive.fair_price(derive.total_settlement(m0, line, "over")) / 1.04
+        u = derive.fair_price(derive.total_settlement(m0, line, "under")) / 1.04
+        lh, la = derive.fit_from_1x2_and_total_prices(fair0, line, o, u)
+        check(f"fit from quoted prices at line {line} recovers the lambdas",
+              abs(lh - 1.7) < 1e-4 and abs(la - 1.0) < 1e-4, f"{lh}, {la}")
+
     m = poisson.score_matrix(1.5, 1.2)
     tot = {}
     diff = {}

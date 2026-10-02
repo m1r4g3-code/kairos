@@ -8,6 +8,8 @@ sharp prices that do exist and reads the other markets off it.
 
   fit_from_1x2(fair)                      expected goals that reproduce a fair 1X2
   fit_from_1x2_and_total(fair, p_over)    ... and a fair over/under as well
+  fit_from_1x2_and_total_prices(...)      same, from the quoted over/under prices
+                                          at any line, quarter lines included
   total_settlement(m, line, side)         how an over/under bet settles, any line
   handicap_settlement(m, line, side)      how an Asian handicap bet settles
   settlement_ev(s, price) / fair_price(s) value of a bet with that settlement
@@ -21,6 +23,8 @@ Pure stdlib.
 """
 
 from __future__ import annotations
+
+import math
 
 import constants
 import poisson
@@ -84,6 +88,33 @@ def fit_from_1x2_and_total(fair: dict, p_over: float, line: float = 2.5,
         x = poisson.outcome_1x2(m, ndigits=None)
         over = sum(p for i, row in enumerate(m) for j, p in enumerate(row) if i + j > line)
         return x["home"] - x["away"] - target, over - p_over
+    return _solve(residual, *_start(fair))
+
+
+def fit_from_1x2_and_total_prices(fair: dict, line: float, over_price: float,
+                                  under_price: float,
+                                  rho: float = constants.DEFAULT_RHO) -> tuple[float, float]:
+    """
+    Expected goals from the fair 1X2 margin and the sharp book's quoted over and
+    under prices at `line`, which may be a whole, half or quarter line.
+
+    The margin is assumed to sit equally on both prices, so the matrix is fitted
+    to make its own fair prices stand in the same ratio as the quoted ones:
+        fair_price(over) / fair_price(under) = over_price / under_price
+    On a half line this is the proportional de-vig. On whole and quarter lines
+    it accounts for pushes and half results, which a plain de-vig cannot.
+    """
+    if over_price <= 1.0 or under_price <= 1.0:
+        raise ValueError("prices must be > 1.0")
+    target = fair["home"] - fair["away"]
+    want = math.log(over_price / under_price)
+
+    def residual(lh, la):
+        m = poisson.score_matrix(lh, la, rho)
+        x = poisson.outcome_1x2(m, ndigits=None)
+        fo = fair_price(total_settlement(m, line, "over"))
+        fu = fair_price(total_settlement(m, line, "under"))
+        return x["home"] - x["away"] - target, math.log(fo / fu) - want
     return _solve(residual, *_start(fair))
 
 

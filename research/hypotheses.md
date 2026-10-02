@@ -264,3 +264,39 @@ Quarter Kelly on a 5.4% claim is roughly 0.6 Kelly on a true 2.3%, which is
 still below full Kelly. Stated before the run: the flat-stake result is the one
 that matters to the owner, because no Kelly rule should be used until the edge
 is established on SportyBet.
+
+**A3 result (2026-10-02, `research/results/a3_development.md` and `a3_holdout.md`).**
+- *T1 killed on development data, as expected.* Over 2.5 fitted from the 1X2
+  price alone: log loss 0.68096 against Bet365's own 0.67616, difference
+  +0.00479 (+0.00369 to +0.00590), 39,399 matches. Its probability sits 4.09
+  points from Pinnacle's on average. A 1X2 price cannot price totals. Not taken
+  to the holdout.
+- *T2 survived on development data and on the holdout.* Home-covers probability
+  on half-line handicaps, fitted from Pinnacle's 1X2 and over 2.5. Development
+  (8,966 matches): derived minus Bet365's own +0.00020 (-0.00038 to +0.00079);
+  derived minus Pinnacle's own +0.00049 (+0.00001 to +0.00097). Holdout (2,134
+  matches, first and only holdout read so far, 39 files logged in
+  `research/holdout_access.jsonl`): derived minus Bet365's own +0.00053
+  (-0.00056 to +0.00163); derived minus Pinnacle's own -0.00007 (-0.00089 to
+  +0.00074). Mean gap to Pinnacle's own probability: 0.68 points on development
+  data, 0.57 on the holdout.
+- **Merged:** `engine/derive.py`. What the result supports: the fit is about as
+  accurate as a bookmaker's own handicap price. What it does not support: that
+  a small gap between a soft book's handicap price and the derived price is
+  value. The derived probability is off Pinnacle's by about 0.6 points on
+  average, which is over 1% of expected value at even money.
+- Quarter lines and whole lines were tested by arithmetic only (unit tests), not
+  against results.
+
+**A4 result (2026-10-02, `research/results/a4_development.md`, commit `715e417`).**
+- Part 1 (one match, one position) shipped as a defect fix with tests.
+- Part 2 failed its rule on development data, as expected; the holdout was not
+  read for it. Shrink factor 0.437 (mean CLV +2.34% over mean claimed +5.35%).
+  Median final bankroll from 100 over 2,976 bets: flat 1 unit 270.9, quarter
+  Kelly on the claimed edge 217.8, quarter Kelly on the shrunk edge 143.7.
+  95th-percentile worst drawdown: 93.1%, 41.7%, 20.7%. Shrinking halves the
+  drawdown and also cuts the growth, so it does not meet "no loss of median
+  growth". `kelly.shrunk_stake_fraction` exists but nothing calls it.
+- Worth noting for the owner: with flat 1-unit stakes on a 100-unit bankroll,
+  one path in twenty lost 93% of its peak at some point, even though the same
+  bets had a positive average return. These bets average odds near 5.

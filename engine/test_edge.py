@@ -112,6 +112,22 @@ def test_odds_api_parser() -> None:
     check("accents folded", odds_api.find_event(many, "Malaga", "Orgryte")["id"] == "ml")
     check("no match gives None", odds_api.find_event(many, "Arsenal", "Spurs") is None)
 
+    # totals and spreads parsing
+    ev2 = {"home_team": "Home FC", "away_team": "Away FC", "bookmakers": [
+        {"key": "pinnacle", "markets": [
+            {"key": "totals", "outcomes": [{"name": "Over", "price": 1.95, "point": 2.75},
+                                           {"name": "Under", "price": 1.93, "point": 2.75}]},
+            {"key": "spreads", "outcomes": [{"name": "Away FC", "price": 1.9, "point": 0.25},
+                                            {"name": "Home FC", "price": 2.0, "point": -0.25}]}]},
+        {"key": "halfbook", "markets": [
+            {"key": "totals", "outcomes": [{"name": "Over", "price": 1.8, "point": 2.5}]}]}]}
+    tl = odds_api.parse_lines(ev2, "totals")
+    check("totals parsed with the line",
+          tl == {"pinnacle": {"line": 2.75, "over": 1.95, "under": 1.93}}, f"{tl}")
+    sp = odds_api.parse_lines(ev2, "spreads")
+    check("spreads parsed with the home handicap",
+          sp == {"pinnacle": {"line": -0.25, "home": 2.0, "away": 1.9}}, f"{sp}")
+
     # End-to-end on the fixture: Arsenal value at the soft books vs Pinnacle.
     fair = edge.sharp_fair(p["books"])["fair_prob"]
     rows = edge.value_vs_sharp(p["books"]["williamhill"], fair)
