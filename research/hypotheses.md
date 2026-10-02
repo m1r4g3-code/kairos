@@ -62,3 +62,34 @@ Rules:
   over the years, and a best-of-several price cannot be taken by someone with
   one account. This is a ceiling, not a plan.
 - **Purpose:** description only. Nothing is selected from this in Phase 2.
+
+---
+
+## Added 2026-10-02 after the first full baseline run
+
+The B0 prediction above was wrong: across 22 leagues and 12 to 13 seasons the
+baseline placed 2,976 1X2 bets with CLV above zero (`research/results/baseline_tables.md`).
+The three entries below only cut the same B0 1X2 bets into groups. They are
+written after seeing the per-league and per-season tables, so they are **post hoc
+descriptions**, not tests, and nothing is selected from them.
+
+### S3. B0 bets by size of the claimed edge
+- **What:** B0 1X2 bets grouped by claimed EV: 3-5%, 5-10%, 10-15%, 15%+.
+- **Why:** CLAUDE.md's rule "a huge edge is a bug". A data error or a stale price
+  shows up as a large claimed edge.
+- **Expected:** CLV rises with the band up to about 10%. Above 15% the return per
+  bet is no better, or worse, than in the lower bands.
+
+### S4. B0 bets by league group and era
+- **What:** (a) E0, SP1, D1, I1, F1 against the other 17 leagues; (b) first-tier
+  leagues against lower tiers; (c) seasons 1213-1718 against 1819-2425.
+  Also the share of outcomes that qualify in each group.
+- **Expected:** CLV near zero in the five big leagues and positive elsewhere
+  (already visible league by league). No confident prediction on era.
+
+### S5. B0 bets by price taken
+- **What:** odds under 2.5, 2.5-5, 5-10, 10 and over. CLV by both de-vig methods.
+- **Why:** the bets average odds near 5. If the result lives only in longshots it
+  leans on the de-vig method being right in the tail.
+- **Expected:** most bets and most of the CLV at odds above 5; the two de-vig
+  methods disagree most there.
