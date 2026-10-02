@@ -84,14 +84,17 @@ class KairosV2(Strategy):
 class MarketForecast(Strategy):
     """A bookmaker's pre-match price, de-vigged, as a forecast. Never bets."""
 
-    def __init__(self, book: str, method: str = "proportional", markets=("1x2", "ou25")):
-        self.book, self.method, self.markets = book, method, markets
-        self.name = f"market[{book},{method}]"
+    def __init__(self, books, method: str = "proportional", markets=("1x2", "ou25")):
+        # books: one column prefix, or several to try in order (Avg, then the older BbAv)
+        self.books = (books,) if isinstance(books, str) else tuple(books)
+        self.method, self.markets = method, markets
+        self.name = f"market[{self.books[0]},{method}]"
 
     def decide(self, pre) -> Decision:
         d = Decision()
         for mkt in self.markets:
-            v = (pre.odds_1x2 if mkt == "1x2" else pre.odds_ou25).get(self.book)
+            odds = pre.odds_1x2 if mkt == "1x2" else pre.odds_ou25
+            v = next((odds[b] for b in self.books if b in odds), None)
             if v:
                 fn = market.devig_power if self.method == "power" else market.devig_proportional
                 d.forecasts[mkt] = tuple(fn(list(v)))

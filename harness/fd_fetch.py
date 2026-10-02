@@ -157,5 +157,6 @@ if __name__ == "__main__":
     if "--manifest" in sys.argv:
         print(f"{len(manifest())} files in manifest")
     else:
-        print(fetch_all())
+        # Newest seasons first: they carry the Pinnacle columns the baseline needs.
+        print(fetch_all(seasons=tuple(reversed(SEASONS))))
         print(f"{len(manifest())} files in manifest")

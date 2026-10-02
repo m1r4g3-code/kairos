@@ -1,5 +1,5 @@
 """
-KAIROS source — Understat adapter (https://understat.com, free, KEYLESS).
+KAIROS source — Understat page parser (live fetch disabled, see fetch_strengths).
 
 Understat publishes match-level xG for the big-5 European leagues + RPL. Each
 league page embeds the data as `var teamsData = JSON.parse('\\x7B...')`. We
@@ -18,12 +18,10 @@ import json
 import os
 import re
 import sys
-import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config  # noqa: E402
 
-BASE = "https://understat.com/league"
 LEAGUES = {"EPL", "La_liga", "Bundesliga", "Serie_A", "Ligue_1", "RFPL"}
 _RE = re.compile(r"teamsData\s*=\s*JSON\.parse\('([^']+)'\)")
 
@@ -71,19 +69,16 @@ def team_strengths(teams_data: dict) -> dict:
 
 def fetch_strengths(league: str = "EPL", season: str = "2025",
                     cache: bool = True) -> dict:
-    """Fetch a league page and return per-team xG strengths. Big-5 only."""
-    if league not in LEAGUES:
-        raise ValueError(f"Understat covers {sorted(LEAGUES)}, not {league}")
-    url = f"{BASE}/{league}/{season}"
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        html = resp.read().decode("utf-8")
-    if cache:
-        os.makedirs(config.CACHE_DIR, exist_ok=True)
-        with open(os.path.join(config.CACHE_DIR, f"understat_{league}_{season}.html"),
-                  "w", encoding="utf-8") as f:
-            f.write(html)
-    return team_strengths(parse_teams_data(html))
+    """
+    DISABLED. Understat's robots.txt is `User-agent: * / Disallow: /` (checked
+    2026-10-02, docs/research.md), so Kairos does not fetch the live site. The
+    parser above still works on a page the user has saved by hand.
+    """
+    raise RuntimeError(
+        "Live Understat fetch is disabled: the site's robots.txt disallows all "
+        "automated access. Use parse_teams_data() on a page saved by hand, or the "
+        "shots and corners columns in the Football-Data files."
+    )
 
 
 def build_strengths_spec(home: str, away: str, strengths: dict, match: str = "",

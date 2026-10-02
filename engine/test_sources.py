@@ -71,6 +71,16 @@ def test_strengths_spec_feeds_engine() -> None:
           understat.build_strengths_spec("Arsenal", "Nope FC", s) is None)
 
 
+def test_understat_live_fetch_disabled() -> None:
+    # robots.txt disallows all automated access (docs/research.md)
+    try:
+        understat.fetch_strengths("EPL", "2025")
+        check("live Understat fetch refuses to run", False)
+    except RuntimeError:
+        check("live Understat fetch refuses to run", True)
+    check("understat module no longer imports urllib", not hasattr(understat, "urllib"))
+
+
 def test_elo_spec_shape() -> None:
     # build_elo_spec needs network; just verify the spec shape the engine expects
     # by constructing it the same way and running the engine.
@@ -84,7 +94,8 @@ def test_elo_spec_shape() -> None:
 
 def run_all() -> None:
     for fn in (test_clubelo_parse, test_understat_parse_and_strengths,
-               test_strengths_spec_feeds_engine, test_elo_spec_shape):
+               test_strengths_spec_feeds_engine, test_understat_live_fetch_disabled,
+               test_elo_spec_shape):
         fn()
     print("\n" + ("ALL SOURCE TESTS PASSED" if not _failures
                   else f"{len(_failures)} FAILURE(S): {_failures}"))

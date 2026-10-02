@@ -36,3 +36,7 @@ jobs:
       - name: Data-source parser tests (offline fixtures)
         working-directory: engine
         run: python test_sources.py
+
+      - name: Backtest harness tests (offline, synthetic data)
+        working-directory: harness
+        run: python test_harness.py

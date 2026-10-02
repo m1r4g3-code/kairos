@@ -99,19 +99,23 @@ def leak_check(matches: list, make_strategy, n_cuts: int = 5) -> list[str]:
     """
     Truncation test for any strategy, including ones that learn from results.
 
-    Runs the strategy on the full history, then again on histories cut off after
-    chosen windows. A decision that changes when later matches are removed has
-    used the future. Returns the keys of matches whose decisions differ (empty
-    list = no leak found at these cut points).
+    make_strategy(matches) builds a fresh strategy and is handed the same
+    history the run is given, so a strategy that fits anything up front (ratings,
+    league averages, tuned parameters) fits it on that history.
+
+    The strategy is run on the full history, then again on histories cut off
+    after chosen windows. A decision that changes when later matches are removed
+    has used the future. Returns the keys of matches whose decisions differ
+    (empty list = no leak found at these cut points).
     """
     wins = windows(matches)
     if not wins:
         return []
-    full = decisions_of(matches, make_strategy())
+    full = decisions_of(matches, make_strategy(matches))
     step = max(1, len(wins) // (n_cuts + 1))
     bad = []
     for i in range(step, len(wins), step):
         upto = [m for _c, g in wins[: i + 1] for m in g]
-        part = decisions_of(upto, make_strategy())
+        part = decisions_of(upto, make_strategy(upto))
         bad.extend(k for k, d in part.items() if d != full[k])
     return sorted(set(bad))
