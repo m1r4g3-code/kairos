@@ -361,6 +361,83 @@ def test_season_codes() -> None:
           and fd_fetch.SEASONS[-1] == "2526")
 
 
+# ── proposal A1: checked sharp reference ─────────────────────────────────────
+
+A1_HEADER = ("Div,Date,HomeTeam,AwayTeam,FTHG,FTAG,FTR,B365H,B365D,B365A,PSH,PSD,PSA,"
+             "BWH,BWD,BWA,IWH,IWD,IWA,WHH,WHD,WHA,PSCH,PSCD,PSCA")
+
+
+def a1_match(pin, others, b365=(2.30, 3.4, 3.5)):
+    vals = ["E0", "03/08/2019", "A", "B", 1, 0, "H", *b365, *pin, *others, *others, *others,
+            *pin]
+    return fd_data.parse(A1_HEADER + "\n" + ",".join(str(v) for v in vals) + "\n",
+                         "E0", "1920")[0]
+
+
+def test_a1_checked_reference() -> None:
+    agree = (2.0, 3.5, 3.9)                    # the other books roughly agree with Pinnacle
+    pre, _ = a1_match(pin=(2.02, 3.6, 3.9), others=agree)
+    med = strategies.others_median(pre.odds_1x2, exclude="B365")
+    want = market.devig_power(list(agree))
+    check("others' median excludes the staked book and Pinnacle",
+          all(abs(a - b) < 1e-12 for a, b in zip(med, want)))
+    d = strategies.KairosV2Checked().decide(pre)
+    fair = d.forecasts["1x2"]
+    gap = dict(d.bets[0].tags)["gap"]
+    check("bet tagged with gap = Pinnacle fair / others' median - 1",
+          len(d.bets) == 1 and abs(gap - (fair[0] / want[0] - 1)) < 1e-12 and abs(gap) < 0.03)
+    check("small gap passes the gate",
+          len(strategies.KairosV2Checked(max_gap=0.05).decide(pre).bets) == 1)
+
+    # Pinnacle alone rates the home side far higher than everyone else.
+    pre2, _ = a1_match(pin=(1.70, 3.9, 5.5), others=(2.25, 3.4, 3.3), b365=(2.20, 3.4, 3.4))
+    tagged = strategies.KairosV2Checked().decide(pre2).bets
+    check("large gap is tagged", tagged and dict(tagged[0].tags)["gap"] > 0.15)
+    check("large gap is skipped by the gate",
+          strategies.KairosV2Checked(max_gap=0.15).decide(pre2).bets == [])
+
+    # Fewer than three other books: unchecked, bet kept, gap None.
+    text = ("Div,Date,HomeTeam,AwayTeam,FTHG,FTAG,FTR,B365H,B365D,B365A,PSH,PSD,PSA,BWH,BWD,BWA\n"
+            "E0,03/08/2019,A,B,1,0,H,2.30,3.4,3.5,2.02,3.6,3.9,2.0,3.5,3.9\n")
+    pre3, _ = fd_data.parse(text, "E0", "1920")[0]
+    b3 = strategies.KairosV2Checked(max_gap=0.05).decide(pre3).bets
+    check("too few other books: bet kept, gap None", len(b3) == 1 and dict(b3[0].tags)["gap"] is None)
+
+    # Scorer copies the tag onto the settled bet.
+    sc = score.Scorer()
+    s = strategies.KairosV2Checked()
+    walk.run([a1_match(pin=(2.02, 3.6, 3.9), others=agree)], [s], sc)
+    check("gap reaches the settled bet record", "gap" in sc.bets[s.name][0])
+
+    # Forecasts.
+    f_close = strategies.CheckedBlend(0.10).decide(pre).forecasts["1x2"]
+    check("blend equals Pinnacle when the books agree", f_close == fair)
+    f_far = strategies.CheckedBlend(0.10).decide(pre2).forecasts["1x2"]
+    pin2 = strategies.KairosV2().decide(pre2).forecasts["1x2"]
+    med2 = strategies.others_median(pre2.odds_1x2, "B365")
+    check("blend sits between Pinnacle and the others when they disagree",
+          med2[0] < f_far[0] < pin2[0] and abs(sum(f_far) - 1) < 1e-9)
+    om = strategies.OthersMedian().decide(pre).forecasts["1x2"]
+    check("others' median forecast sums to 1", abs(sum(om) - 1) < 1e-9)
+    check("leak check passes for the checked strategy",
+          walk.leak_check(many_matches(), lambda _m: strategies.KairosV2Checked(max_gap=0.1)) == [])
+
+
+def test_group_diff() -> None:
+    a = [{"cluster": i, "clv": 0.04} for i in range(40)]
+    b = [{"cluster": 100 + i, "clv": -0.02} for i in range(40)]
+    d = metrics.group_diff(a, b, n_boot=300)
+    check("group difference point estimate", abs(d["diff"] - 0.06) < 1e-12)
+    check("constant groups give a zero-width interval",
+          abs(d["lo"] - 0.06) < 1e-9 and abs(d["hi"] - 0.06) < 1e-9)
+    mixed = [{"cluster": i, "clv": 0.1 if i % 2 else -0.1} for i in range(60)]
+    d2 = metrics.group_diff(mixed[:30], mixed[30:], n_boot=500)
+    check("no real difference: interval includes zero", d2["lo"] < 0 < d2["hi"], str(d2))
+    check("empty group gives None", metrics.group_diff(a, []) is None)
+    check("bets without a closing price are left out",
+          metrics.group_diff(a + [{"cluster": 999, "clv": None}], b, n_boot=200)["n_a"] == 40)
+
+
 # ── gap census ───────────────────────────────────────────────────────────────
 
 def _event(eid="ev1", pin=(2.02, 3.6, 3.9), kickoff="2026-10-10T15:00:00Z", with_pin=True):
@@ -416,7 +493,7 @@ def run_all() -> None:
                test_runner_never_shows_the_future, test_leak_check, test_forecast_scores,
                test_bet_summary, test_baseline_matches_engine,
                test_best_price_uses_named_books_only, test_scorer, test_season_codes,
-               test_census):
+               test_census, test_a1_checked_reference, test_group_diff):
         fn()
     print("\n" + ("ALL HARNESS TESTS PASSED" if not _failures
                   else f"{len(_failures)} FAILURE(S): {_failures}"))

@@ -31,6 +31,7 @@ class Bet:
     book: str            # where the price came from
     claimed_ev: float    # what the strategy believed the edge was
     stake: float = 1.0
+    tags: tuple = ()     # (name, value) pairs copied onto the settled bet record
 
 
 @dataclass

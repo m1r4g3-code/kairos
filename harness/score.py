@@ -64,6 +64,7 @@ class Scorer:
                 "profit": bet.stake * (bet.odds - 1.0) if won else -bet.stake,
                 "clv": bet.odds * fc[bet.selection] - 1.0 if fc else None,
                 "clv_prop": bet.odds * fcp[bet.selection] - 1.0 if fcp else None,
+                **dict(bet.tags),
             })
         if pre.key not in self._closed:
             self._closed.add(pre.key)

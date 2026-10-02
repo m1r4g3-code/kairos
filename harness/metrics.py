@@ -114,6 +114,41 @@ def _percentile_interval(samples: list[float], level: float = 0.95) -> tuple[flo
     return s[lo], s[hi]
 
 
+def group_diff(a: list[dict], b: list[dict], key: str = "clv", n_boot: int = 2000,
+               seed: int = 11) -> dict | None:
+    """
+    Mean of `key` in group a minus the mean in group b, with a 95% interval from
+    resampling clusters (matches) across both groups together. Bets without a
+    value for `key` are left out. None if either group is empty.
+    """
+    clusters: dict = {}
+    for g, bets in ((0, a), (1, b)):
+        for bet in bets:
+            if bet.get(key) is None:
+                continue
+            c = clusters.setdefault(bet["cluster"], [0.0, 0, 0.0, 0])
+            c[2 * g] += bet[key]
+            c[2 * g + 1] += 1
+    rows = list(clusters.values())
+    na, nb = sum(r[1] for r in rows), sum(r[3] for r in rows)
+    if not na or not nb:
+        return None
+    point = sum(r[0] for r in rows) / na - sum(r[2] for r in rows) / nb
+    rng = random.Random(seed)
+    m, diffs = len(rows), []
+    for _ in range(n_boot):
+        sa = ca = sb = cb = 0.0
+        for r in rng.choices(rows, k=m):
+            sa += r[0]
+            ca += r[1]
+            sb += r[2]
+            cb += r[3]
+        if ca and cb:
+            diffs.append(sa / ca - sb / cb)
+    lo, hi = _percentile_interval(diffs)
+    return {"diff": point, "lo": lo, "hi": hi, "n_a": na, "n_b": nb}
+
+
 def bet_summary(bets: list[dict], n_boot: int = 2000, seed: int = 11,
                 max_draws: int = 40_000_000) -> dict | None:
     """
