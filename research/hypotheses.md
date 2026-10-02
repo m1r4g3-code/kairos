@@ -300,3 +300,74 @@ is established on SportyBet.
 - Worth noting for the owner: with flat 1-unit stakes on a 100-unit bankroll,
   one path in twenty lost 93% of its peak at some point, even though the same
   bets had a positive average return. These bets average odds near 5.
+
+### A5. Team ratings blended with the market (written 2026-10-02, before any A5 run)
+
+**Idea (docs/research.md, proposal A5).** A goal-based team rating, blended with
+Pinnacle's price by a fitted weight. Built with the standard library only.
+
+**Model.** One online rating per team per league: attack a and defence d, with a
+league base rate and a league home advantage. Expected goals
+home = exp(base + home_adv + a_home - d_away), away = exp(base + a_away - d_home).
+After each match every term moves by k x (goals - expected goals) (a gradient
+step on the Poisson likelihood; league terms move at k/10). A team new to a
+league starts at the mean rating of that league's three lowest-rated teams.
+1X2 comes from the shipped Dixon-Coles matrix with rho = -0.10. Ratings run from
+2000/01 so they are warm when Pinnacle prices begin in 2012/13.
+
+**Tuning allowed on development data.** k from {0.02, 0.04, 0.08}, chosen by the
+model's own log loss on development matches that have a Pinnacle price.
+
+**Blend.** Log pool: p proportional to market^(1-w) x model^w, market = Pinnacle
+pre-match, power de-vig. w is fitted by maximum likelihood; its 95% interval is
+the likelihood-ratio interval. Walk-forward version: for each season, w is
+fitted on all earlier seasons only.
+
+**Choice rule on development data.** A5 goes to the holdout only if the
+interval for w excludes zero **and** the walk-forward blend's log loss is lower
+than the market's alone with the paired interval wholly below zero.
+
+**Holdout rule.** With k and w frozen from development data, merge only if the
+blend's log loss on the holdout is lower than the market's alone with the paired
+interval wholly below zero.
+
+**Expected.** Killed. Model log loss around 0.03 worse than Pinnacle; w at or
+near zero (Pitcan 2026 found 0.000 over 19 Serie A seasons).
+
+### A6. Shots-on-target ratings for totals (written 2026-10-02, before any A6 run)
+
+**Idea (docs/research.md, proposal A6; Wheatcroft).** Shots carry more
+information about future goals than goals do. Replaces Understat, whose live
+feed is off limits, with the shots-on-target columns already in the files.
+
+**Model.** The same online rating as A5, but the count being rated is shots on
+target. Expected goals for a side = its expected shots on target x the league's
+running goals-per-shot-on-target rate (updated after each window). Over 2.5
+comes from the shipped score matrix. Same k grid, chosen by the model's own
+over/under log loss on development matches with a Pinnacle over/under price.
+The first ten league-matches of data per league are not forecast.
+
+**Tests on development data (2019/20 on, where Pinnacle totals exist).**
+- Log-pool weight w against Pinnacle's pre-match over/under, as in A5.
+- Betting: back over or under at Bet365's pre-match price when the model's
+  probability x price - 1 exceeds 3%; CLV against Pinnacle's closing total.
+
+**Choice rule on development data.** A6 goes to the holdout only if the
+interval for w excludes zero **and** the bets' CLV interval lies wholly above zero.
+
+**Holdout rule.** Same two conditions on the holdout with k and w frozen.
+
+**Expected.** Killed. The published effect is about 0.8% per bet against a
+5-6% soft-book margin; I expect a weight near zero and negative CLV.
+
+### B0-H. The baseline on the holdout (written 2026-10-02, to be run last in Phase 3)
+
+Once A5 and A6 are finished, the frozen B0 (Bet365 against Pinnacle, +3%, 1X2 and
+over/under 2.5) is run once on the holdout seasons. No improvement that changes
+bet selection is pending, so this is an out-of-sample check of the Phase 2
+finding, not a comparison.
+**Expected.** 1X2 CLV positive but smaller than the development +2.3%, because
+the last development seasons were weaker (2023/24: +1.2%, interval includes
+zero). Roughly 250-350 bets. Return per bet not distinguishable from zero.
+**What would change my view.** A CLV interval wholly below zero on the holdout
+would mean the development result does not carry forward to recent seasons.
