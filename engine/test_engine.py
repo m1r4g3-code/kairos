@@ -12,6 +12,7 @@ import math
 
 import poisson
 import elo as elo_mod
+import derive
 import monte_carlo
 import market as market_mod
 import kelly
@@ -356,8 +357,78 @@ def test_audit_defects() -> None:
           res["best_bet"] is not None and res["best_bet"].get("speculative") is True)
 
 
+# ── derive.py (proposal A3) ──────────────────────────────────────────────────
+def test_derive() -> None:
+    # Fits recover the lambdas that made the prices.
+    for lh0, la0 in ((1.6, 1.1), (0.7, 2.3), (2.9, 0.5), (1.2, 1.2)):
+        m = poisson.score_matrix(lh0, la0)
+        fair = poisson.outcome_1x2(m, ndigits=None)
+        lh, la = derive.fit_from_1x2(fair)
+        check(f"1X2 fit recovers lambdas {lh0}/{la0}",
+              abs(lh - lh0) < 1e-5 and abs(la - la0) < 1e-5, f"{lh}, {la}")
+        over = sum(p for i, r in enumerate(m) for j, p in enumerate(r) if i + j > 2.5)
+        lh2, la2 = derive.fit_from_1x2_and_total(fair, over)
+        check(f"1X2+total fit recovers lambdas {lh0}/{la0}",
+              abs(lh2 - lh0) < 1e-5 and abs(la2 - la0) < 1e-5, f"{lh2}, {la2}")
+
+    m = poisson.score_matrix(1.5, 1.2)
+    tot = {}
+    diff = {}
+    for i, r in enumerate(m):
+        for j, p in enumerate(r):
+            tot[i + j] = tot.get(i + j, 0.0) + p
+            diff[i - j] = diff.get(i - j, 0.0) + p
+    ge = lambda d, k: sum(p for t, p in d.items() if t >= k)        # noqa: E731
+    le = lambda d, k: sum(p for t, p in d.items() if t <= k)        # noqa: E731
+
+    s = derive.total_settlement(m, 2.5)
+    check("over 2.5: win on 3+, lose otherwise",
+          abs(s["win"] - ge(tot, 3)) < 1e-12 and abs(s["loss"] - le(tot, 2)) < 1e-12
+          and s["push"] == s["half_win"] == s["half_loss"] == 0)
+    s = derive.total_settlement(m, 2.25)
+    check("over 2.25: exactly 2 goals is a half loss",
+          abs(s["half_loss"] - tot[2]) < 1e-12 and abs(s["win"] - ge(tot, 3)) < 1e-12
+          and abs(s["loss"] - le(tot, 1)) < 1e-12)
+    s = derive.total_settlement(m, 2.75)
+    check("over 2.75: exactly 3 goals is a half win",
+          abs(s["half_win"] - tot[3]) < 1e-12 and abs(s["win"] - ge(tot, 4)) < 1e-12
+          and abs(s["loss"] - le(tot, 2)) < 1e-12)
+    s = derive.total_settlement(m, 3.0)
+    check("over 3.0: exactly 3 goals is a push", abs(s["push"] - tot[3]) < 1e-12)
+    u = derive.total_settlement(m, 2.75, side="under")
+    check("under 2.75 mirrors over 2.75",
+          abs(u["half_loss"] - tot[3]) < 1e-12 and abs(u["win"] - le(tot, 2)) < 1e-12)
+    check("2.25, 2.5 and 2.75 are priced differently",
+          len({round(derive.fair_price(derive.total_settlement(m, ln)), 6)
+               for ln in (2.25, 2.5, 2.75)}) == 3)
+
+    h = derive.handicap_settlement(m, -0.25)
+    check("home -0.25: a draw is a half loss",
+          abs(h["half_loss"] - diff[0]) < 1e-12 and abs(h["win"] - ge(diff, 1)) < 1e-12)
+    h = derive.handicap_settlement(m, +0.25)
+    check("home +0.25: a draw is a half win", abs(h["half_win"] - diff[0]) < 1e-12)
+    h = derive.handicap_settlement(m, -1.0)
+    check("home -1: a one-goal win is a push",
+          abs(h["push"] - diff[1]) < 1e-12 and abs(h["win"] - ge(diff, 2)) < 1e-12)
+    a = derive.handicap_settlement(m, +0.5, side="away")
+    x = poisson.outcome_1x2(m, ndigits=None)
+    check("away +0.5 wins unless the home side wins", abs(a["win"] - (x["draw"] + x["away"])) < 1e-12)
+    for s in (derive.total_settlement(m, 2.75), derive.handicap_settlement(m, -0.75)):
+        check("settlement probabilities sum to 1", abs(sum(s.values()) - 1.0) < 1e-12)
+        check("the fair price has zero expected profit",
+              abs(derive.settlement_ev(s, derive.fair_price(s))) < 1e-12)
+    check("a line that is not a quarter is refused", _raises(lambda: derive.total_settlement(m, 2.6)))
+
+    fair = {"home": 0.5, "draw": 0.3, "away": 0.2}
+    dc = derive.double_chance(fair)
+    check("double chance", abs(dc["1X"] - 0.8) < 1e-12 and abs(dc["X2"] - 0.5) < 1e-12
+          and abs(dc["12"] - 0.7) < 1e-12)
+    dnb = derive.draw_no_bet(fair)
+    check("draw no bet", abs(dnb["home"] - 5 / 7) < 1e-12 and abs(sum(dnb.values()) - 1) < 1e-12)
+
+
 def run_all() -> None:
-    for fn in (test_audit_defects, test_market, test_poisson, test_elo, test_monte_carlo,
+    for fn in (test_audit_defects, test_derive, test_market, test_poisson, test_elo, test_monte_carlo,
                test_kelly, test_run_value, test_run_pass,
                test_run_skipped_and_validation, test_report):
         fn()

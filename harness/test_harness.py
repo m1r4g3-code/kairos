@@ -90,7 +90,8 @@ def test_columns_split_pre_and_closing() -> None:
 def test_prematch_holds_nothing_from_the_future() -> None:
     names = {f.name for f in dataclasses.fields(fd_data.PreMatch)}
     check("PreMatch fields are the allowed ones",
-          names == {"key", "league", "season", "date", "home", "away", "odds_1x2", "odds_ou25"},
+          names == {"key", "league", "season", "date", "home", "away", "odds_1x2", "odds_ou25",
+                    "ah_line", "odds_ah"},
           str(names))
     pre, post = sample([row("03/08/2019", "A", "B", 2, 1)])[0]
     check("pre-match Pinnacle price is PSH, not the closing PSCH",
@@ -103,6 +104,21 @@ def test_prematch_holds_nothing_from_the_future() -> None:
           not ({1.5, 7.0, 4.3, 1.8} & set(flat)))
     check("result and stats are in Post",
           (post.fthg, post.ftag, post.ftr, post.stats["HST"]) == (2, 1, "H", 5))
+
+
+def test_asian_handicap_columns() -> None:
+    text = ("Div,Date,HomeTeam,AwayTeam,FTHG,FTAG,FTR,AHh,B365AHH,B365AHA,PAHH,PAHA,"
+            "AHCh,B365CAHH,B365CAHA,PCAHH,PCAHA\n"
+            "E0,03/08/2019,A,B,2,1,H,-0.5,1.95,1.95,1.97,1.96,-0.75,2.05,1.85,2.07,1.86\n"
+            "E0,04/08/2019,C,D,0,0,D,,1.95,1.95,1.97,1.96,,,,,\n")
+    (pre, post), (pre2, post2) = fd_data.parse(text, "E0", "1920")
+    check("pre-match handicap line and prices in PreMatch",
+          pre.ah_line == -0.5 and pre.odds_ah == {"B365": (1.95, 1.95), "PS": (1.97, 1.96)})
+    check("closing handicap line and prices in Post only",
+          post.close_ah_line == -0.75 and post.close_ah["PS"] == (2.07, 1.86)
+          and 2.07 not in [v for t in pre.odds_ah.values() for v in t])
+    check("a missing line gives no handicap prices", pre2.ah_line is None and pre2.odds_ah == {}
+          and post2.close_ah == {})
 
 
 def test_parse_is_robust() -> None:
@@ -489,7 +505,7 @@ def test_census() -> None:
 
 def run_all() -> None:
     for fn in (test_columns_split_pre_and_closing, test_prematch_holds_nothing_from_the_future,
-               test_parse_is_robust, test_holdout_guard, test_collection_cutoff,
+               test_asian_handicap_columns, test_parse_is_robust, test_holdout_guard, test_collection_cutoff,
                test_runner_never_shows_the_future, test_leak_check, test_forecast_scores,
                test_bet_summary, test_baseline_matches_engine,
                test_best_price_uses_named_books_only, test_scorer, test_season_codes,

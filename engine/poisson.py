@@ -57,11 +57,13 @@ def score_matrix(lam_h: float, lam_a: float, rho: float = constants.DEFAULT_RHO,
             f"rho must be in [{constants.RHO_MIN}, {constants.RHO_MAX}], got {rho}"
         )
     m = [[0.0] * (max_goals + 1) for _ in range(max_goals + 1)]
+    pmf_h = [poisson_pmf(i, lam_h) for i in range(max_goals + 1)]
+    pmf_a = [poisson_pmf(j, lam_a) for j in range(max_goals + 1)]
     for i in range(max_goals + 1):
-        pi = poisson_pmf(i, lam_h)
+        pi = pmf_h[i]
         for j in range(max_goals + 1):
-            pj = poisson_pmf(j, lam_a)
-            cell = pi * pj * _dc_tau(i, j, lam_h, lam_a, rho)
+            pj = pmf_a[j]
+            cell = pi * pj * (_dc_tau(i, j, lam_h, lam_a, rho) if i < 2 and j < 2 else 1.0)
             if cell < 0:
                 # Defence in depth: rho is in-band but extreme lambdas pushed a
                 # low-score tau negative. Refuse rather than emit a bad distribution.
@@ -74,8 +76,8 @@ def score_matrix(lam_h: float, lam_a: float, rho: float = constants.DEFAULT_RHO,
     return [[v / total for v in row] for row in m]
 
 
-def outcome_1x2(m: list[list[float]]) -> dict[str, float]:
-    """Home win / draw / away win from the score matrix."""
+def outcome_1x2(m: list[list[float]], ndigits: int | None = 6) -> dict[str, float]:
+    """Home win / draw / away win from the score matrix (ndigits=None: unrounded)."""
     home = draw = away = 0.0
     for i, row in enumerate(m):
         for j, p in enumerate(row):
@@ -85,7 +87,10 @@ def outcome_1x2(m: list[list[float]]) -> dict[str, float]:
                 draw += p
             else:
                 away += p
-    return {"home": round(home, 6), "draw": round(draw, 6), "away": round(away, 6)}
+    if ndigits is None:
+        return {"home": home, "draw": draw, "away": away}
+    return {"home": round(home, ndigits), "draw": round(draw, ndigits),
+            "away": round(away, ndigits)}
 
 
 def over_under(m: list[list[float]], line: float = 2.5) -> dict[str, float]:

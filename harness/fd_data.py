@@ -40,6 +40,9 @@ SHARP = "PS"                       # Pinnacle
 EXCHANGES = ("BFE",)               # Betfair Exchange: commission applies, not a book price
 OU_RENAME = {"P": "PS", "PC": "PSC"}   # the O/U columns call Pinnacle "P"
 STAT_COLS = ("HS", "AS", "HST", "AST", "HC", "AC")
+# Asian handicap (2019/20 on): the line is the handicap given to the home side.
+AH_PRE = {"B365": ("B365AHH", "B365AHA"), "PS": ("PAHH", "PAHA")}
+AH_CLOSE = {"B365": ("B365CAHH", "B365CAHA"), "PS": ("PCAHH", "PCAHA")}
 
 
 class HoldoutError(RuntimeError):
@@ -56,6 +59,8 @@ class PreMatch:
     away: str
     odds_1x2: dict = field(default_factory=dict)    # book -> (home, draw, away)
     odds_ou25: dict = field(default_factory=dict)   # book -> (over, under)
+    ah_line: float | None = None                    # pre-match handicap on the home side
+    odds_ah: dict = field(default_factory=dict)     # book -> (home, away) at ah_line
 
 
 @dataclass(frozen=True)
@@ -67,6 +72,8 @@ class Post:
     close_1x2: dict = field(default_factory=dict)   # book -> (home, draw, away)
     close_ou25: dict = field(default_factory=dict)  # book -> (over, under)
     stats: dict = field(default_factory=dict)       # shots, shots on target, corners
+    close_ah_line: float | None = None
+    close_ah: dict = field(default_factory=dict)    # book -> (home, away) at close_ah_line
 
 
 # ── holdout guard ────────────────────────────────────────────────────────────
@@ -170,6 +177,17 @@ def parse(text: str, league: str, season: str) -> list[tuple[PreMatch, Post]]:
             if v:
                 close_ou[OU_RENAME.get(p, p)] = v
 
+        def ah(line_col, cols_by_book):
+            try:
+                line = float(row[line_col])
+            except (KeyError, ValueError, TypeError):
+                return None, {}
+            prices = {b: v for b, cols in cols_by_book.items() if (v := _price(row, cols))}
+            return (line, prices) if prices else (None, {})
+
+        ah_line, pre_ah = ah("AHh", AH_PRE)
+        close_ah_line, close_ah = ah("AHCh", AH_CLOSE)
+
         stats = {}
         for c in STAT_COLS:
             try:
@@ -178,8 +196,8 @@ def parse(text: str, league: str, season: str) -> list[tuple[PreMatch, Post]]:
                 pass
 
         out.append((
-            PreMatch(key, league, season, date, home, away, pre_1x2, pre_ou),
-            Post(key, hg, ag, ftr, close_1x2, close_ou, stats),
+            PreMatch(key, league, season, date, home, away, pre_1x2, pre_ou, ah_line, pre_ah),
+            Post(key, hg, ag, ftr, close_1x2, close_ou, stats, close_ah_line, close_ah),
         ))
     return out
 
