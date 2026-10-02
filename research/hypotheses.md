@@ -176,3 +176,53 @@ prices, its paired difference against power again lies wholly below zero.
 **Expected.** Differences of a few ten-thousandths. Proportional worst, because
 it leaves too much probability on longshots. Power and Shin close together.
 Guess: power stays.
+
+**A2 result (2026-10-02, `research/results/a2_development.md`, commit `429ac1b`).**
+Power stays; the holdout was not read. Power had the lowest log loss on all four
+price sets. On 1X2 pre-match (93,025 matches): proportional minus power +0.00025
+(+0.00014 to +0.00035), Shin minus power +0.00005 (+0.00002 to +0.00009). The
+whole difference is in markets with a longshot: where the longest price is 10 or
+more, proportional is worse by +0.00265 and Shin by +0.00073; where it is under
+5 the three are identical to five decimals. Shin is now available in
+`market.py` but is not the default. Seven Pinnacle rows in 265,000 have a margin
+above 12% (data errors, e.g. over/under 1.06 and 1.81); they were left in.
+
+### A3. Price cousin markets from the sharp line (written 2026-10-02, before any A3 run)
+
+**Idea (docs/research.md, proposal A3).** Fit expected goals for each side to
+Pinnacle's prices, then read other markets off the score matrix: other goal
+lines, Asian handicaps (with correct quarter-line settlement), double chance.
+
+**Fit.** Dixon-Coles score matrix with rho fixed at -0.10 (the shipped default;
+not tuned). Two fits:
+- *F1*: expected goals chosen so the matrix reproduces Pinnacle's fair 1X2
+  (power de-vig). Uses no totals price.
+- *F2*: expected goals chosen so the matrix reproduces Pinnacle's fair
+  home-minus-away margin and Pinnacle's fair over 2.5 probability.
+
+**Tests on development data, seasons 2019/20 on (when the files carry
+Pinnacle and Bet365 totals and handicap prices).**
+- *T1 (the test named in the research):* F1's over-2.5 probability, scored by
+  log loss against Pinnacle's own over/under price and Bet365's own (both power
+  de-vig), on the same matches.
+- *T2:* F2's probability that the home side covers the pre-match Asian handicap
+  line, on matches where that line is a half line (no push, so log loss is
+  defined), against Pinnacle's own handicap price and Bet365's own.
+- *T3 (arithmetic, no data):* quarter-line settlement and double chance are
+  checked by unit tests against hand-worked cases.
+
+**Kill rules.** T1: the 1X2-only fit is killed as a way to price totals if its
+log loss is worse than Bet365's own (paired interval wholly above zero). T2: the
+1X2-plus-total fit is killed as a way to price handicaps if its log loss is
+worse than Bet365's own.
+
+**Holdout rule.** A fit that survives on development data is re-run on the
+holdout and kept only if it is again not worse than Bet365's own price.
+
+**Expected.** T1 killed: a 1X2 price says little about total goals, so the
+derived over/under will be clearly worse than both bookmakers' own. T2
+survives: once the total is pinned to Pinnacle's, the handicap price should be
+close to Pinnacle's own and no worse than Bet365's.
+
+**What survives regardless.** Quarter-line settlement is a correctness fix
+(audit 5a #4) and ships with unit tests whatever the data says.
