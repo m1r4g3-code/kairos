@@ -49,8 +49,17 @@ def elo_to_lambdas(rating_home: float, rating_away: float,
         lam_home + lam_away = total_goals
     """
     sup = elo_supremacy(rating_home, rating_away, home_advantage)
-    lam_h = max(0.15, (total_goals + sup) / 2.0)
-    lam_a = max(0.15, (total_goals - sup) / 2.0)
+    floor = 0.15
+    if total_goals <= 2 * floor:
+        raise ValueError(f"total_goals must be above {2 * floor}, got {total_goals}")
+    lam_h = (total_goals + sup) / 2.0
+    lam_a = (total_goals - sup) / 2.0
+    # A huge rating gap would push the weaker side below the floor. Hold it at the
+    # floor and give the rest to the stronger side, so the total stays as given.
+    if lam_a < floor:
+        lam_h, lam_a = total_goals - floor, floor
+    elif lam_h < floor:
+        lam_h, lam_a = floor, total_goals - floor
     return round(lam_h, 4), round(lam_a, 4)
 
 
@@ -73,6 +82,10 @@ def strengths_to_lambdas(
     (higher = concedes more), so multiplying by the opponent's def works directly.
     home_mult applies any extra venue boost on top of the baked-in home/away split.
     """
+    for name, v in (("att_home", att_home), ("def_home", def_home), ("att_away", att_away),
+                    ("def_away", def_away), ("home_mult", home_mult)):
+        if not v > 0:
+            raise ValueError(f"{name} must be > 0, got {v}")
     lam_h = league_home_avg * att_home * def_away * home_mult
     lam_a = league_away_avg * att_away * def_home
     return round(max(0.15, lam_h), 4), round(max(0.15, lam_a), 4)

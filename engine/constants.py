@@ -30,5 +30,13 @@ CONFIDENCE_FLOOR = 45.0      # below this → stake 0 (pass)
 MIN_EDGE = 0.03              # require +3% EV to bet
 MAX_EXPOSURE = 0.15          # max combined live exposure across all active bets
 
+# ── Judgment modifiers ───────────────────────────────────────────────────────
+# A qualitative nudge may move expected goals by at most 20% either way
+# (about 0.3 goals at a typical 1.5). Outside this the spec is rejected.
+MODIFIER_MIN, MODIFIER_MAX = 0.80, 1.20
+
+# ── Sharp reference (edge.py) ────────────────────────────────────────────────
+MIN_CONSENSUS_BOOKS = 3      # without a sharp book, fewer books than this is no reference
+
 # ── Sensitivity / fragility (L14) ────────────────────────────────────────────
 SENSITIVITY_PERTURB = 0.15   # ±15% lambda perturbation used to fragility-test a bet

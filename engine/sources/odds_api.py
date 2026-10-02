@@ -16,6 +16,7 @@ import json
 import os
 import sys
 import time
+import unicodedata
 import urllib.parse
 import urllib.request
 
@@ -30,7 +31,11 @@ def fetch_raw(sport_key: str = "soccer_epl", regions: str = "uk,eu",
               cache: bool = True) -> list[dict]:
     """
     GET odds for a sport from The Odds API. Returns the raw events list.
-    Caches to fixtures/odds_<sport>.json. Raises if no key is configured.
+    Raises if no key is configured.
+
+    Cache file: fixtures/odds_<sport>.json for h2h, and
+    fixtures/odds_<sport>_<markets>.json for anything else, so fetching totals
+    no longer overwrites the h2h cache.
     """
     key = api_key or config.ODDS_API_KEY
     if not key:
@@ -47,7 +52,8 @@ def fetch_raw(sport_key: str = "soccer_epl", regions: str = "uk,eu",
         data = json.loads(resp.read().decode("utf-8"))
     if cache:
         os.makedirs(CACHE, exist_ok=True)
-        path = os.path.join(CACHE, f"odds_{sport_key}.json")
+        suffix = "" if markets == "h2h" else "_" + markets.replace(",", "+")
+        path = os.path.join(CACHE, f"odds_{sport_key}{suffix}.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump({"_fetched": time.time(), "events": data}, f)
     return data
@@ -90,15 +96,31 @@ def parse_event(event: dict) -> dict:
 
 
 def find_event(events: list[dict], home_hint: str, away_hint: str) -> dict | None:
-    """Loosely match a screenshot fixture to an Odds API event by team-name substring."""
+    """
+    Match a screenshot fixture to an Odds API event by team-name substring.
+
+    Accents are folded, so "Malaga" matches "Málaga". If several events match, an
+    exact name match wins; if that does not settle it, a ValueError lists the
+    candidates rather than returning the first one (which may be the wrong game).
+    """
     def norm(s: str) -> str:
-        return "".join(c for c in s.lower() if c.isalnum())
+        s = unicodedata.normalize("NFKD", s)
+        return "".join(c for c in s.lower() if c.isalnum() and not unicodedata.combining(c))
     h, a = norm(home_hint), norm(away_hint)
+    hits = []
     for ev in events:
         eh, ea = norm(ev.get("home_team", "")), norm(ev.get("away_team", ""))
         if (h in eh or eh in h) and (a in ea or ea in a):
-            return ev
-    return None
+            hits.append((ev, eh == h and ea == a))
+    if not hits:
+        return None
+    exact = [ev for ev, is_exact in hits if is_exact]
+    if len(exact) == 1:
+        return exact[0]
+    if len(hits) == 1:
+        return hits[0][0]
+    names = [f"{ev.get('home_team')} v {ev.get('away_team')}" for ev, _ in hits]
+    raise ValueError(f"hints match {len(hits)} events, be more specific: {names}")
 
 
 if __name__ == "__main__":

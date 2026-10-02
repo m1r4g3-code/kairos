@@ -97,6 +97,11 @@ def over_under(m: list[list[float]], line: float = 2.5) -> dict[str, float]:
     PUSH (stake returned) — it must NOT be folded into "under". When that mass is
     non-zero a `push_<line>` key is returned and over + under + push = 1.0.
     """
+    if (line * 2) != int(line * 2):
+        raise ValueError(
+            f"{line} is a quarter line: half the stake goes on each neighbouring "
+            f"line. over_under() prices half and whole lines only."
+        )
     over = push = 0.0
     for i, row in enumerate(m):
         for j, p in enumerate(row):

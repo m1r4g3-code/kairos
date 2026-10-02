@@ -82,10 +82,11 @@ def fetch_strengths(league: str = "EPL", season: str = "2025",
 
 
 def build_strengths_spec(home: str, away: str, strengths: dict, match: str = "",
-                         home_mult: float = 1.10) -> dict | None:
+                         home_mult: float = 1.0) -> dict | None:
     """
     Build a run.build_prediction `strengths` spec from two teams' xG strengths.
-    home_mult applies a generic home-field boost on top. None if a team is missing.
+    home_mult stays 1.0 by default: the engine's league home/away averages already
+    carry home advantage, so a boost here would count it twice. None if a team is missing.
     """
     h, a = strengths.get(home), strengths.get(away)
     if not h or not a:

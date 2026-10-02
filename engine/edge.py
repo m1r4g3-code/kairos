@@ -17,7 +17,10 @@ Pure stdlib. De-vig is reused from market.py (no new probability code).
 
 from __future__ import annotations
 
+import statistics
+
 import config
+import constants
 import market
 
 
@@ -33,8 +36,17 @@ def sharp_fair(book_odds: dict[str, dict[str, float]],
             consensus (average) across all books if no priority book is present.
 
     Returns:
-        {"source": <book or "consensus">, "fair_prob": {sel: p}, "n_books": k}
-        or None if there's nothing usable.
+        {"source": <book or "consensus">, "sharp": bool, "fair_prob": {sel: p},
+         "n_books": k, "others_median": {sel: p} | None, "n_others": j}
+        or None if there is no usable reference.
+
+    "others_median" is the median de-vigged probability across every book other
+    than the sharp one, when at least MIN_CONSENSUS_BOOKS of them are present.
+    It is reported so a caller can see when the sharp book stands alone; it does
+    not change fair_prob.
+
+    Without a sharp book, a consensus needs at least MIN_CONSENSUS_BOOKS books.
+    One or two soft books are not a reference, and None is returned.
     """
     books = {b: o for b, o in book_odds.items() if o and len(o) >= 2}
     if not books:
@@ -44,9 +56,17 @@ def sharp_fair(book_odds: dict[str, dict[str, float]],
     for b in sharp_priority:
         if b in books:
             fair = market.market_view(books[b], method=method)["fair_prob"]
-            return {"source": b, "fair_prob": fair, "n_books": 1}
+            others = [market.market_view(o, method=method)["fair_prob"]
+                      for k, o in books.items() if k != b and set(o) == set(books[b])]
+            med = None
+            if len(others) >= constants.MIN_CONSENSUS_BOOKS:
+                med = {s: round(statistics.median(f[s] for f in others), 6) for s in fair}
+            return {"source": b, "sharp": True, "fair_prob": fair, "n_books": 1,
+                    "others_median": med, "n_others": len(others)}
 
     # 2) Otherwise, de-vig every book and average per selection (consensus).
+    if len(books) < constants.MIN_CONSENSUS_BOOKS:
+        return None
     sels = set().union(*(o.keys() for o in books.values()))
     acc: dict[str, list[float]] = {s: [] for s in sels}
     for o in books.values():
@@ -56,7 +76,8 @@ def sharp_fair(book_odds: dict[str, dict[str, float]],
     avg = {s: sum(v) / len(v) for s, v in acc.items() if v}
     total = sum(avg.values())
     fair = {s: round(p / total, 6) for s, p in avg.items()}     # renormalize
-    return {"source": "consensus", "fair_prob": fair, "n_books": len(books)}
+    return {"source": "consensus", "sharp": False, "fair_prob": fair,
+            "n_books": len(books), "others_median": None, "n_others": 0}
 
 
 def value_vs_sharp(sb_odds: dict[str, float], fair: dict[str, float],

@@ -262,8 +262,84 @@ def test_report() -> None:
     check("fairly-priced favourite not a trap", not sf["trap"])
 
 
+# ── audit section 5a defects (docs/audit.md) ─────────────────────────────────
+def _raises(fn) -> bool:
+    try:
+        fn()
+    except ValueError:
+        return True
+    return False
+
+
+def test_audit_defects() -> None:
+    # 5a #7: de-vig refuses prices that are not prices
+    check("power de-vig rejects odds <= 1", _raises(lambda: market_mod.devig_power([1.0, 3.0, 4.0])))
+    check("proportional de-vig rejects odds <= 1",
+          _raises(lambda: market_mod.devig_proportional([0.9, 3.0])))
+    check("de-vig rejects a one-price market", _raises(lambda: market_mod.devig_power([2.0])))
+    p = market_mod.devig_power([1.02, 15.0, 34.0])
+    check("power de-vig still solves an extreme market", abs(sum(p) - 1.0) < 1e-9 and p[0] > 0.9)
+
+    # 5a #8: the Elo floor must not change the total
+    lh, la = elo_mod.elo_to_lambdas(2100, 1500, total_goals=2.7)
+    check("Elo floor keeps the total", abs(lh + la - 2.7) < 1e-9 and la == 0.15, f"{lh}+{la}")
+    lh, la = elo_mod.elo_to_lambdas(1500, 2200, total_goals=2.7)
+    check("Elo floor keeps the total (away favourite)", abs(lh + la - 2.7) < 1e-9 and lh == 0.15)
+    check("negative strength rejected",
+          _raises(lambda: elo_mod.strengths_to_lambdas(-1.0, 1.0, 1.0, 1.0)))
+
+    # 5a #4: a quarter line is refused rather than priced as its neighbour
+    m = poisson.score_matrix(1.5, 1.2)
+    check("quarter line refused", _raises(lambda: poisson.over_under(m, 2.75))
+          and _raises(lambda: poisson.over_under(m, 2.25)))
+    check("half and whole lines still priced",
+          "over_2.5" in poisson.over_under(m, 2.5) and "push_3.0" in poisson.over_under(m, 3.0))
+
+    # 5a #5: Monte Carlo models the same distribution as the analytic engine
+    analytic = poisson.full_markets(1.5, 1.2, rho=-0.10)
+    mc = monte_carlo.simulate(1.5, 1.2, n=120_000, seed=3, rho=-0.10)
+    worst = max(abs(mc[k][s] - analytic[k][s]) for k in ("1x2", "ou_2.5", "btts") for s in mc[k])
+    check("MC with rho agrees with the analytic engine", worst < 0.006, f"worst diff {worst:.4f}")
+    plain = monte_carlo.simulate(1.5, 1.2, n=120_000, seed=3)
+    check("rho changes the draw probability in MC",
+          mc["1x2"]["draw"] - plain["1x2"]["draw"] > 0.01,
+          f"{mc['1x2']['draw']} vs {plain['1x2']['draw']}")
+    noisy = monte_carlo.simulate(1.5, 1.2, n=200_000, lambda_sigma=0.19, seed=4)
+    check("lambda noise does not raise expected goals",
+          abs(noisy["expected_goals"][0] - 1.5) < 0.012
+          and abs(noisy["expected_goals"][1] - 1.2) < 0.012, f"{noisy['expected_goals']}")
+
+    # 5a #2: modifiers are bounded
+    base = {"match": "A vs B", "lambdas": {"home": 1.5, "away": 1.2}, "confidence": 70,
+            "odds": {"1x2": {"home": 2.3, "draw": 3.4, "away": 3.2}}}
+    check("modifier outside the band rejected",
+          _raises(lambda: build_prediction({**base, "modifiers": {"lam_home_mult": 3.0}}))
+          and _raises(lambda: build_prediction({**base, "modifiers": {"lam_away_mult": 0.5}})))
+    res = build_prediction({**base, "modifiers": {"lam_home_mult": 1.2, "lam_away_mult": 0.8}})
+    check("modifier at the edge of the band accepted", res["lambdas"]["home"] == 1.8)
+    check("raw lambdas and raw distribution reported",
+          res["lambdas_raw"] == {"home": 1.5, "away": 1.2}
+          and res["distribution_raw"]["1x2"]["home"] < res["distribution"]["1x2"]["home"])
+    check("every value-table row carries the raw probability",
+          all("raw_prob" in r for r in res["value_table"]))
+    check("Monte Carlo check agrees with analytic in a full run",
+          res["monte_carlo_check"]["agrees_with_analytic"],
+          f"{res['monte_carlo_check']['max_abs_diff_vs_analytic']}")
+
+    # 5a #10: a fragile "value" bet is not a bet
+    spec = {"match": "A vs B", "lambdas": {"home": 1.62, "away": 1.2}, "confidence": 75,
+            "odds": {"1x2": {"home": 2.30, "draw": 3.4, "away": 3.2}}}
+    res = build_prediction(spec)
+    check("fragile edge gives a SPECULATIVE verdict", res["verdict"].startswith("SPECULATIVE"),
+          res["verdict"])
+    check("speculative verdict leaves no row marked bet and no stake",
+          not any(r["bet"] or r["stake_units"] for r in res["value_table"]))
+    check("the fragile candidate is kept on record",
+          res["best_bet"] is not None and res["best_bet"].get("speculative") is True)
+
+
 def run_all() -> None:
-    for fn in (test_market, test_poisson, test_elo, test_monte_carlo,
+    for fn in (test_audit_defects, test_market, test_poisson, test_elo, test_monte_carlo,
                test_kelly, test_run_value, test_run_pass,
                test_run_skipped_and_validation, test_report):
         fn()

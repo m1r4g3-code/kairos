@@ -25,12 +25,22 @@ def overround(odds: list[float]) -> float:
     return sum(1.0 / o for o in odds) - 1.0
 
 
+def _check_odds(odds: list[float]) -> None:
+    """A market needs at least two prices, every one above 1.0."""
+    if len(odds) < 2:
+        raise ValueError(f"a market needs at least two prices, got {len(odds)}")
+    for o in odds:
+        if not o > 1.0:
+            raise ValueError(f"decimal odds must be > 1.0, got {o}")
+
+
 def devig_proportional(odds: list[float]) -> list[float]:
     """
     De-vig by proportional normalization (the simple, robust default).
     Slightly over-shrinks longshots (favorite-longshot bias) — treat longshot
     fair probs as a touch high. Returns probabilities summing to 1.0.
     """
+    _check_odds(odds)
     raw = [1.0 / o for o in odds]
     total = sum(raw)
     return [r / total for r in raw]
@@ -46,15 +56,20 @@ def devig_power(odds: list[float], tol: float = 1e-9, max_iter: int = 100) -> li
     De-vig by the power method: find k so that Σ (1/odds_i)^k = 1.
     Handles favorite-longshot bias better than proportional. Bisection on k.
     """
+    _check_odds(odds)
     raw = [1.0 / o for o in odds]
 
     def s(k: float) -> float:
         return sum(r ** k for r in raw) - 1.0
 
     lo, hi = 0.5, 2.0
-    # ensure the root is bracketed
-    while s(hi) > 0 and hi < 10:
+    # ensure the root is bracketed on both sides (s falls as k rises)
+    while s(hi) > 0 and hi < 50:
         hi *= 1.5
+    while s(lo) < 0 and lo > 1e-3:
+        lo /= 2
+    if s(hi) > 0 or s(lo) < 0:
+        raise ValueError(f"power de-vig could not bracket a solution for odds {odds}")
     for _ in range(max_iter):
         mid = (lo + hi) / 2
         val = s(mid)

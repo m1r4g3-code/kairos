@@ -30,6 +30,7 @@ CLI:
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 from collections import defaultdict
@@ -110,17 +111,34 @@ def log_prediction(record: dict) -> str:
 
 def record_result(pred_id: str, outcome: str | None = None,
                   closing_odds: float | None = None,
-                  score: str | None = None) -> None:
+                  score: str | None = None,
+                  closing_fair_prob: float | None = None,
+                  correction: bool = False) -> None:
     """
     Append an actual result for a logged prediction.
       outcome      : realized 1X2 result ("home"/"draw"/"away") — or "win"/"lose"
                      for a single non-1X2 pick.
-      closing_odds : closing price of the HEADLINE pick (for CLV).
+      closing_odds : closing price of the HEADLINE pick (raw-price CLV).
       score        : final score "h-a" (e.g. "2-1"); when present, every pick
                      (1X2/O-U/BTTS) is settled exactly, including O/U pushes.
+      closing_fair_prob : the sharp book's closing probability for the headline
+                     pick with the margin removed (fair CLV = odds x this - 1).
+      correction   : a second result for the same id is refused unless this is
+                     True; the latest result for an id is the one that counts.
+
+    Raises ValueError for an id that was never logged, so a typo cannot create a
+    result that silently matches nothing.
     """
+    known = {p.get("id") for p in _read_jsonl(PRED_PATH)[0]}
+    if pred_id not in known:
+        raise ValueError(f"no logged prediction with id {pred_id!r}")
+    settled = {r.get("id") for r in _read_jsonl(RES_PATH)[0]}
+    if pred_id in settled and not correction:
+        raise ValueError(
+            f"{pred_id!r} already has a result; pass correction=True to replace it"
+        )
     rec = {"id": pred_id, "outcome": outcome, "closing_odds": closing_odds,
-           "score": score}
+           "score": score, "closing_fair_prob": closing_fair_prob}
     _append_jsonl(RES_PATH, rec)
 
 
@@ -196,8 +214,20 @@ def compute_calibration() -> dict:
             preds_by_id[p["id"]].append(p)
     dup_ids = sorted(k for k, v in preds_by_id.items() if len(v) > 1)
 
+    # One result per prediction: the latest line for an id wins (corrections).
+    latest: dict[str, dict] = {}
+    for r in results:
+        if r.get("id") is not None:
+            latest[r["id"]] = r
+    superseded = len([r for r in results if r.get("id") is not None]) - len(latest)
+    results = list(latest.values())
+
     brier_terms: list[float] = []
     clv_terms: list[float] = []
+    clv_fair_terms: list[float] = []
+    # Picks that carry both the raw model probability and the judgment-adjusted
+    # one, so the judgment layer can be scored against the raw model.
+    raw_pairs: list[tuple[float, float, bool]] = []
     bucket_hits = {b: [0, 0] for b in BUCKETS}      # band -> [wins, n]
     staked = won = 0
     profit = 0.0
@@ -221,6 +251,8 @@ def compute_calibration() -> dict:
 
             if my_prob is not None:
                 brier_terms.append((my_prob - (1.0 if win else 0.0)) ** 2)
+                if pick.get("raw_prob") is not None:
+                    raw_pairs.append((pick["raw_prob"], my_prob, win))
                 for b in BUCKETS:
                     if b[0] <= my_prob < b[1]:
                         bucket_hits[b][1] += 1
@@ -241,6 +273,9 @@ def compute_calibration() -> dict:
                 cl = r.get("closing_odds")
                 if cl and odds:
                     clv_terms.append(odds / cl - 1.0)
+                cfp = r.get("closing_fair_prob")
+                if cfp and odds:
+                    clv_fair_terms.append(odds * cfp - 1.0)
 
     return {
         "predictions_logged": len(preds_list),
@@ -253,6 +288,11 @@ def compute_calibration() -> dict:
         "roi": round(profit / total_staked, 4) if total_staked else None,
         "profit_units": round(profit, 2),
         "avg_clv": round(sum(clv_terms) / len(clv_terms), 4) if clv_terms else None,
+        "avg_clv_fair": (round(sum(clv_fair_terms) / len(clv_fair_terms), 4)
+                         if clv_fair_terms else None),
+        "n_clv_fair": len(clv_fair_terms),
+        "superseded_results": superseded,
+        "judgment": _judgment_score(raw_pairs),
         "n_scored_picks": len(brier_terms),
         "buckets": {
             f"{int(b[0]*100)}-{int(b[1]*100)}%":
@@ -260,6 +300,28 @@ def compute_calibration() -> dict:
             for b, h in bucket_hits.items()
         },
     }
+
+
+def _judgment_score(pairs: list[tuple[float, float, bool]]) -> dict:
+    """
+    Raw model probability against the judgment-adjusted one on the same picks.
+    Lower is better for both scores. `adjusted_better` is None until there are picks.
+    """
+    n = len(pairs)
+    if not n:
+        return {"n": 0, "brier_raw": None, "brier_adjusted": None,
+                "log_loss_raw": None, "log_loss_adjusted": None, "adjusted_better": None}
+
+    def brier(i: int) -> float:
+        return sum((p[i] - (1.0 if p[2] else 0.0)) ** 2 for p in pairs) / n
+
+    def log_loss(i: int) -> float:
+        eps = 1e-12
+        return -sum(math.log(max(eps, p[i] if p[2] else 1.0 - p[i])) for p in pairs) / n
+
+    return {"n": n, "brier_raw": round(brier(0), 4), "brier_adjusted": round(brier(1), 4),
+            "log_loss_raw": round(log_loss(0), 4), "log_loss_adjusted": round(log_loss(1), 4),
+            "adjusted_better": log_loss(1) < log_loss(0)}
 
 
 def pending_predictions() -> list[dict]:

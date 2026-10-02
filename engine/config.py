@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import os
 
+import constants
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 ENV_PATH = os.path.join(_ROOT, ".env")
@@ -46,7 +48,7 @@ OPENWEATHER_API_KEY = os.environ.get("OPENWEATHER_API_KEY", "")
 SHARP_PRIORITY = ("pinnacle", "betfair_ex_eu", "marathonbet")
 
 # Minimum EV over the sharp fair price before we call something value.
-MIN_EDGE = 0.03
+MIN_EDGE = constants.MIN_EDGE      # single definition lives in constants.py
 
 
 def have_key() -> bool:

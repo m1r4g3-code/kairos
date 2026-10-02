@@ -66,6 +66,11 @@ def test_strengths_spec_feeds_engine() -> None:
     x = res["distribution"]["1x2"]
     check("strong home favoured by data-fed engine", x["home"] > x["away"],
           f"{x}")
+    # two exactly average teams must get the league averages, not a doubled home edge
+    avg = {"A": {"att": 1.0, "def": 1.0}, "B": {"att": 1.0, "def": 1.0}}
+    even = build_prediction({**understat.build_strengths_spec("A", "B", avg), "confidence": 60})
+    check("home advantage counted once", even["lambdas"] == {"home": 1.5, "away": 1.2},
+          f"{even['lambdas']}")
     # missing team -> None (caller falls back to judgment)
     check("missing team -> no spec",
           understat.build_strengths_spec("Arsenal", "Nope FC", s) is None)

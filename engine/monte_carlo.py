@@ -28,14 +28,40 @@ def _sample_poisson(lam: float, rng: random.Random) -> int:
             return k - 1
 
 
+def _dc_accept(gh: int, ga: int, lh: float, la: float, rho: float,
+               rng: random.Random) -> bool:
+    """
+    Accept or reject an independent-Poisson scoreline so the accepted draws follow
+    the Dixon-Coles distribution (same low-score factors as poisson._dc_tau).
+    """
+    taus = (1.0 - lh * la * rho, 1.0 + lh * rho, 1.0 + la * rho, 1.0 - rho)
+    top = max(1.0, *taus)
+    if gh == 0 and ga == 0:
+        tau = taus[0]
+    elif gh == 0 and ga == 1:
+        tau = taus[1]
+    elif gh == 1 and ga == 0:
+        tau = taus[2]
+    elif gh == 1 and ga == 1:
+        tau = taus[3]
+    else:
+        tau = 1.0
+    return rng.random() * top < max(0.0, tau)
+
+
 def simulate(lam_h: float, lam_a: float, n: int = 50_000,
-             lambda_sigma: float = 0.0, seed: int | None = None) -> dict:
+             lambda_sigma: float = 0.0, seed: int | None = None,
+             rho: float = 0.0) -> dict:
     """
     Simulate the match n times.
 
+    rho is the Dixon-Coles low-score dependence. Pass the same rho as the analytic
+    engine and the two model the same distribution.
+
     lambda_sigma > 0 draws each game's lambdas from a log-normal around the point
     estimate (multiplicative noise), modelling our uncertainty about expected goals.
-    Set it from confidence: low confidence -> larger sigma -> fatter tails.
+    The noise is mean-preserving, so it widens the spread without raising the
+    expected goals. Set it from confidence: low confidence -> larger sigma.
 
     Returns 1X2, O/U 2.5, BTTS probabilities plus expected goals — same shape as
     the analytic engine so they can be compared directly.
@@ -44,14 +70,19 @@ def simulate(lam_h: float, lam_a: float, n: int = 50_000,
     home = draw = away = over25 = btts_yes = 0
     sum_h = sum_a = 0
 
-    for _ in range(n):
+    shift = -0.5 * lambda_sigma * lambda_sigma        # keeps E[lambda] at the point estimate
+    done = 0
+    while done < n:
         if lambda_sigma > 0:
-            lh = lam_h * math.exp(rng.gauss(0, lambda_sigma))
-            la = lam_a * math.exp(rng.gauss(0, lambda_sigma))
+            lh = lam_h * math.exp(rng.gauss(shift, lambda_sigma))
+            la = lam_a * math.exp(rng.gauss(shift, lambda_sigma))
         else:
             lh, la = lam_h, lam_a
         gh = _sample_poisson(lh, rng)
         ga = _sample_poisson(la, rng)
+        if rho and not _dc_accept(gh, ga, lh, la, rho, rng):
+            continue
+        done += 1
         sum_h += gh
         sum_a += ga
         if gh > ga:

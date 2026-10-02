@@ -42,11 +42,25 @@ def test_consensus_fallback() -> None:
     books = {  # no sharp-priority book present -> consensus
         "williamhill": {"home": 1.95, "draw": 3.80, "away": 4.30},
         "betway": {"home": 1.83, "draw": 3.85, "away": 4.40},
+        "unibet": {"home": 1.90, "draw": 3.75, "away": 4.35},
     }
     sf = edge.sharp_fair(books)
-    check("falls back to consensus", sf["source"] == "consensus")
+    check("falls back to consensus", sf["source"] == "consensus" and sf["sharp"] is False)
     check("consensus sums to 1.0", abs(sum(sf["fair_prob"].values()) - 1.0) < 1e-6)
-    check("consensus used both books", sf["n_books"] == 2)
+    check("consensus used all three books", sf["n_books"] == 3)
+    # audit 5a #9: one or two soft books are not a reference
+    two = {k: books[k] for k in ("williamhill", "betway")}
+    check("two soft books give no reference", edge.sharp_fair(two) is None)
+    check("a lone soft book gives no reference",
+          edge.sharp_fair({"betway": books["betway"]}) is None)
+    # with Pinnacle present, the other books' median is reported beside it
+    sf2 = edge.sharp_fair({"pinnacle": {"home": 1.80, "draw": 3.90, "away": 4.50}, **books})
+    check("others' median reported next to the sharp price",
+          sf2["sharp"] and sf2["n_others"] == 3
+          and abs(sum(sf2["others_median"].values()) - 1.0) < 0.01)
+    sf3 = edge.sharp_fair({"pinnacle": {"home": 1.80, "draw": 3.90, "away": 4.50}, **two})
+    check("too few other books: no median, sharp price still returned",
+          sf3["others_median"] is None and sf3["source"] == "pinnacle")
 
 
 def test_value_detection() -> None:
@@ -85,6 +99,18 @@ def test_odds_api_parser() -> None:
     # find_event loose matching
     ev = odds_api.find_event(events, "Arsenal FC", "Chelsea")
     check("find_event matches by name", ev is not None and ev["id"] == "sample_ars_che")
+    many = [{"id": "mu", "home_team": "Manchester United", "away_team": "Chelsea"},
+            {"id": "mc", "home_team": "Manchester City", "away_team": "Chelsea"},
+            {"id": "ml", "home_team": "Málaga", "away_team": "Örgryte"}]
+    try:
+        odds_api.find_event(many, "Manchester", "Chelsea")
+        check("ambiguous hint refused, not guessed", False)
+    except ValueError:
+        check("ambiguous hint refused, not guessed", True)
+    check("specific hint resolves the ambiguity",
+          odds_api.find_event(many, "Manchester City", "Chelsea")["id"] == "mc")
+    check("accents folded", odds_api.find_event(many, "Malaga", "Orgryte")["id"] == "ml")
+    check("no match gives None", odds_api.find_event(many, "Arsenal", "Spurs") is None)
 
     # End-to-end on the fixture: Arsenal value at the soft books vs Pinnacle.
     fair = edge.sharp_fair(p["books"])["fair_prob"]

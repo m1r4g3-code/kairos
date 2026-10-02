@@ -117,6 +117,53 @@ def run_all() -> None:
     check("corrupt line skipped, not fatal", cal2["bad_lines"]["predictions"] >= 1,
           f"bad_lines={cal2['bad_lines']}")
 
+    # ── results must match a logged prediction, once ───────────────────────────
+    for label, call in (
+        ("result for an unknown id rejected",
+         lambda: ledger.record_result("2026-09-09-NOPE", outcome="home")),
+        ("second result for the same id rejected",
+         lambda: ledger.record_result("2026-01-02-MULTI", outcome="away", score="0-1")),
+    ):
+        try:
+            call()
+            check(label, False)
+        except ValueError:
+            check(label, True)
+    before = ledger.compute_calibration()
+    check("rejected results changed nothing",
+          before["profit_units"] == cal["profit_units"]
+          and before["n_scored_picks"] == cal["n_scored_picks"])
+    # A hand-made duplicate line (not via record_result) must not double-count.
+    with open(ledger.RES_PATH, "a", encoding="utf-8") as f:
+        f.write(_json.dumps({"id": "2026-01-02-MULTI", "outcome": "home",
+                             "closing_odds": 1.9, "score": "2-1"}) + "\n")
+    dup = ledger.compute_calibration()
+    check("duplicate result line is not double-counted",
+          dup["profit_units"] == cal["profit_units"] and dup["superseded_results"] == 1,
+          f"profit={dup['profit_units']} superseded={dup['superseded_results']}")
+
+    # ── a correction replaces the earlier result ───────────────────────────────
+    ledger.log_prediction(_pred(
+        "2026-01-04-FIX", [{"market": "1x2", "selection": "home", "my_prob": 0.6,
+                            "raw_prob": 0.5, "odds": 2.0, "stake_units": 1.0}]))
+    ledger.record_result("2026-01-04-FIX", outcome="away", score="0-1")
+    lost = ledger.compute_calibration()["profit_units"]
+    ledger.record_result("2026-01-04-FIX", outcome="home", score="1-0",
+                         closing_fair_prob=0.55, correction=True)
+    fixed = ledger.compute_calibration()
+    check("correction replaces the earlier result",
+          abs(fixed["profit_units"] - (lost + 2.0)) < 1e-6,
+          f"lost={lost} fixed={fixed['profit_units']}")
+
+    # ── fair CLV and the judgment-layer score ──────────────────────────────────
+    check("fair CLV = odds x closing fair probability - 1",
+          fixed["n_clv_fair"] == 1 and abs(fixed["avg_clv_fair"] - 0.10) < 1e-6,
+          f"{fixed['avg_clv_fair']}")
+    j = fixed["judgment"]
+    check("raw and adjusted probabilities scored on the same pick",
+          j["n"] == 1 and j["brier_raw"] == 0.25 and j["brier_adjusted"] == 0.16
+          and j["adjusted_better"] is True, f"{j}")
+
     # ── pending list ────────────────────────────────────────────────────────────
     pend_ids = {p["id"] for p in ledger.pending_predictions()}
     check("settled prediction not pending", "2026-01-02-MULTI" not in pend_ids)

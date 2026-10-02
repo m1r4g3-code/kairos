@@ -61,6 +61,15 @@ def _validate_spec(spec: dict) -> None:
         lam = spec["lambdas"]
         if float(lam.get("home", 0)) <= 0 or float(lam.get("away", 0)) <= 0:
             raise ValueError(f"lambdas must be > 0, got {lam}")
+    mods = spec.get("modifiers", {})
+    for key in ("lam_home_mult", "lam_away_mult"):
+        m = float(mods.get(key, 1.0))
+        if not (constants.MODIFIER_MIN <= m <= constants.MODIFIER_MAX):
+            raise ValueError(
+                f"modifier {key}={m} is outside the allowed band "
+                f"[{constants.MODIFIER_MIN}, {constants.MODIFIER_MAX}]; a judgment "
+                f"nudge may not move expected goals by more than 20%"
+            )
     for mkt_key, mkt_odds in spec.get("odds", {}).items():
         if not isinstance(mkt_odds, dict):
             raise ValueError(f"odds['{mkt_key}'] must be an object of selection->price")
@@ -149,7 +158,10 @@ def build_prediction(spec: dict) -> dict:
     _validate_spec(spec)
     lam_h, lam_a = _resolve_lambdas(spec)
 
-    # Bounded qualitative modifiers (my judgment, applied to lambdas).
+    raw_h, raw_a = round(lam_h, 4), round(lam_a, 4)       # before any judgment
+
+    # Bounded qualitative modifiers (my judgment, applied to lambdas). The band is
+    # enforced in _validate_spec.
     mods = spec.get("modifiers", {})
     lam_h *= mods.get("lam_home_mult", 1.0)
     lam_a *= mods.get("lam_away_mult", 1.0)
@@ -160,13 +172,21 @@ def build_prediction(spec: dict) -> dict:
     confidence = float(spec.get("confidence", 60))
     bankroll = float(spec.get("bankroll", 100))
 
-    # Analytic distribution (exact).
+    # Analytic distribution (exact), and the same thing before the modifiers so
+    # the value of the judgment layer can be measured later.
     dist = poisson.full_markets(lam_h, lam_a, rho)
+    dist_raw = poisson.full_markets(raw_h, raw_a, rho)
 
-    # Monte Carlo cross-check; lambda uncertainty scales inversely with confidence.
+    # Monte Carlo, two runs with the same rho as the analytic engine:
+    #   check        no lambda noise; must agree with the analytic numbers
+    #   uncertainty  lambda noise scaled inversely with confidence (fatter tails)
     sigma = max(0.0, (100 - confidence) / 100.0) * constants.SIGMA_SCALER
+    mc_check = monte_carlo.simulate(lam_h, lam_a, n=constants.MC_DEFAULT_N,
+                                    seed=constants.MC_SEED, rho=rho)
     mc = monte_carlo.simulate(lam_h, lam_a, n=constants.MC_DEFAULT_N,
-                              lambda_sigma=sigma, seed=constants.MC_SEED)
+                              lambda_sigma=sigma, seed=constants.MC_SEED, rho=rho)
+    mc_diff = max(abs(mc_check[m][k] - dist[m][k])
+                  for m in ("1x2", "ou_2.5", "btts") for k in mc_check[m])
 
     # Value table: for every market with odds, de-vig and size each selection.
     # Any selection the analytic engine does not model is recorded explicitly in
@@ -198,32 +218,46 @@ def build_prediction(spec: dict) -> dict:
         value_table.append({
             "market": st.market, "selection": st.selection, "odds": st.odds,
             "my_prob": st.my_prob, "fair_prob": st.fair_prob,
+            "raw_prob": round(_my_prob_for(st.market, st.selection, dist_raw), 4),
             "ev": st.ev, "edge_vs_market": st.edge_vs_market,
             "stake_units": st.stake_units, "bet": st.bet, "reason": st.reason,
         })
+    # Fragility-test every candidate. A fragile one is not a bet: it keeps its row
+    # for the record but loses its stake.
+    fragile: list[dict] = []
+    for r in value_table:
+        if not r["bet"]:
+            continue
+        r["sensitivity"] = _sensitivity(lam_h, lam_a, rho, r)
+        if not r["sensitivity"]["robust"]:
+            r["bet"], r["stake_units"], r["speculative"] = False, 0.0, True
+            r["reason"] = "speculative: " + r["sensitivity"]["note"]
+            fragile.append(r)
     value_table.sort(key=lambda r: (r["bet"], r["ev"]), reverse=True)
 
     value_bets = [r for r in value_table if r["bet"]]
-    best_bet = value_bets[0] if value_bets else None
-    sensitivity = _sensitivity(lam_h, lam_a, rho, best_bet) if best_bet else None
-
-    # If the headline value bet is fragile, downgrade the verdict honestly.
-    if best_bet and sensitivity and not sensitivity["robust"]:
+    if value_bets:
+        best_bet, verdict = value_bets[0], "BET"
+    elif fragile:
+        best_bet = max(fragile, key=lambda r: r["ev"])
         verdict = "SPECULATIVE -- value is fragile to input assumptions"
-    elif value_bets:
-        verdict = "BET"
     else:
-        verdict = "PASS -- no value"
+        best_bet, verdict = None, "PASS -- no value"
+    sensitivity = best_bet["sensitivity"] if best_bet else None
 
     return {
         "match": spec.get("match", "?"),
         "league": spec.get("league", "?"),
         "lambdas": {"home": lam_h, "away": lam_a},
+        "lambdas_raw": {"home": raw_h, "away": raw_a},
         "modifier_note": mods.get("note", ""),
         "confidence": confidence,
         "distribution": dist,
+        "distribution_raw": dist_raw,
         "monte_carlo_check": {"1x2": mc["1x2"], "ou_2.5": mc["ou_2.5"],
-                              "btts": mc["btts"]},
+                              "btts": mc["btts"],
+                              "max_abs_diff_vs_analytic": round(mc_diff, 4),
+                              "agrees_with_analytic": mc_diff < 0.015},
         "value_table": value_table,
         "skipped_markets": skipped,
         "sensitivity": sensitivity,
