@@ -8,6 +8,11 @@ user can judge whether the edge is real BEFORE paying for anything.
 
 Reuses market.devig_power for the sharp fair probs. Pure stdlib.
 
+WARNING (2026-10-02, docs/audit.md section 3): this script has look-ahead. It
+selects bets with Pinnacle's CLOSING price and stakes them at an earlier Bet365
+price, so its ROI and "CLV" columns are not evidence of an edge. It is kept
+unchanged for reference. Use harness/run_baseline.py for numbers you can trust.
+
 CLI:
     python backtest.py <league> <season>     # e.g. python backtest.py E0 2425
     python backtest.py --fixture fd_sample.csv
@@ -99,7 +104,8 @@ def print_report(rows: list[dict], title: str) -> None:
         print(f"  {r['threshold']*100:>6.0f}%{r['bets']:>8}{hit:>8}{roi:>9}"
               f"{r['profit_u']:>11.2f}{clv:>10}")
     print("  " + "-" * 68)
-    print("  ROI>0 AND CLV>0 across a big sample = real edge. You judge it.")
+    print("  WARNING: look-ahead (selects on the closing price). Not evidence of an edge.")
+    print("  Use harness/run_baseline.py. See docs/audit.md section 3.")
     print("=" * 72)
 
 
