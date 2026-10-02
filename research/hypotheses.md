@@ -226,3 +226,41 @@ close to Pinnacle's own and no worse than Bet365's.
 
 **What survives regardless.** Quarter-line settlement is a correctness fix
 (audit 5a #4) and ships with unit tests whatever the data says.
+
+### A4. Same-match exposure and Kelly shrinkage (written 2026-10-02, before any A4 run; A3 still running)
+
+**Idea (docs/research.md, proposal A4).** Two parts.
+
+*Part 1, same-match grouping (audit 5a #11).* Bets on one match are not
+independent. The combined stake on one match is capped at the single-bet cap
+(5% of bankroll). This is the rule already written in `knowledge/staking-kelly.md`
+("correlated bets count once"), so it ships as a defect fix with unit tests. It
+changes no probability and needs no data test.
+
+*Part 2, shrink the edge before Kelly.* The baseline's bets claimed +5.4% and
+kept +2.3% at the close. Kelly on the claimed edge over-bets. Shrunk Kelly
+multiplies the claimed edge by k before sizing, where k = mean CLV / mean
+claimed edge over the development B0 1X2 bets (computed in the run, not chosen
+by hand).
+
+**What is run (development B0 1X2 bets).** 2,000 bootstrap bankroll paths, each
+resampling whole matches with replacement to the original count and betting
+them in sequence from a bankroll of 100. Three staking rules:
+- flat: 1 unit per bet (the owner's current practice);
+- quarter Kelly on the claimed edge, 5% cap (what `kelly.py` does today);
+- quarter Kelly on the shrunk edge, 5% cap, same-match grouping.
+Reported for each: median final bankroll, 5th percentile of final bankroll,
+median and 95th percentile of the worst drawdown.
+
+**Choice rule on development data.** Shrunk Kelly goes to the holdout only if,
+against quarter Kelly on the claimed edge, its 95th-percentile drawdown is
+smaller and its median final bankroll is not lower.
+
+**Holdout rule.** Same comparison on the holdout B0 bets.
+
+**Expected.** Fails its own rule. Shrinking makes every stake smaller, so
+drawdown falls, but if the edge is real the median final bankroll falls too.
+Quarter Kelly on a 5.4% claim is roughly 0.6 Kelly on a true 2.3%, which is
+still below full Kelly. Stated before the run: the flat-stake result is the one
+that matters to the owner, because no Kelly rule should be used until the edge
+is established on SportyBet.
