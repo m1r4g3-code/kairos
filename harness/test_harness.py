@@ -24,6 +24,7 @@ import census
 import fd_data
 import fd_fetch
 import metrics
+import ratings
 import score
 import strategies
 import walk
@@ -454,6 +455,81 @@ def test_group_diff() -> None:
           metrics.group_diff(a + [{"cluster": 999, "clv": None}], b, n_boot=200)["n_a"] == 40)
 
 
+# ── proposals A5 / A6: online ratings and the log pool ───────────────────────
+
+def test_online_ratings() -> None:
+    ms = many_matches(60)
+    r = ratings.OnlineRatings(0.05)
+    out = walk.decisions_of(ms, r)
+    n_fc = sum(1 for f, _ in out.values() if f)
+    check("no forecast during the warm-up, forecasts afterwards",
+          n_fc == len(ms) - ratings.WARMUP, f"{n_fc} of {len(ms)}")
+    f = next(f for f, _ in out.values() if f)
+    check("1X2 and over/under forecasts sum to 1",
+          abs(sum(f["1x2"]) - 1) < 1e-9 and abs(sum(f["ou25"]) - 1) < 1e-9)
+    check("ratings pass the leak check",
+          walk.leak_check(ms, lambda _m: ratings.OnlineRatings(0.05)) == [])
+    check("shots-on-target ratings pass the leak check",
+          walk.leak_check(ms, lambda _m: ratings.OnlineRatings(0.05, "sot", bet_ou_book="B365")) == [])
+
+    # deciding must not change the state
+    r2 = ratings.OnlineRatings(0.05)
+    walk.decisions_of(ms[:40], r2)
+    lg = r2.leagues["E0"]
+    snap = (lg.base, lg.home, dict(lg.att), dict(lg.dfn), lg.n)
+    pre_new = fd_data.PreMatch("x", "E0", "1920", ms[40][0].date, "Newcomer", "A")
+    r2.decide(pre_new)
+    check("decide() leaves the ratings untouched",
+          snap == (lg.base, lg.home, lg.att, lg.dfn, lg.n) and "Newcomer" not in lg.att)
+
+    # a team that always wins 3-0 ends up rated above one that always loses
+    rows, day = [], dt.date(2019, 8, 3)
+    for w in range(40):
+        d8 = (day + dt.timedelta(weeks=w)).strftime("%d/%m/%Y")
+        rows.append(row(d8, "Strong", "Weak", 3, 0) if w % 2 == 0 else row(d8, "Weak", "Strong", 0, 3))
+    r3 = ratings.OnlineRatings(0.05)
+    walk.decisions_of(sample(rows), r3)
+    lg3 = r3.leagues["E0"]
+    check("ratings learn who is stronger",
+          lg3.att["Strong"] > lg3.att["Weak"] and lg3.dfn["Strong"] > lg3.dfn["Weak"])
+    pre_s = fd_data.PreMatch("y", "E0", "1920", day + dt.timedelta(weeks=41), "Strong", "Weak")
+    f3 = r3.decide(pre_s).forecasts["1x2"]
+    check("the stronger side is the favourite", f3[0] > 0.6 > f3[2], str(f3))
+    lg3.last.update({"T1": "1920", "T2": "1920"})
+    lg3.att.update({"T1": -0.5, "T2": -0.7})
+    lg3.dfn.update({"T1": -0.5, "T2": -0.7})
+    r3._ensure(lg3, "Promoted", "1920")
+    low = sorted(["Strong", "Weak", "T1", "T2"], key=lambda t: lg3.att[t] + lg3.dfn[t])[:3]
+    check("a new team starts at the mean of the three lowest-rated teams",
+          abs(lg3.att["Promoted"] - sum(lg3.att[t] for t in low) / 3) < 1e-12)
+
+
+def test_log_pool() -> None:
+    mkt, mod = (0.5, 0.3, 0.2), (0.2, 0.3, 0.5)
+    check("weight 0 is the market, weight 1 is the model",
+          all(abs(a - b) < 1e-12 for a, b in zip(ratings.pool(mkt, mod, 0.0), mkt))
+          and all(abs(a - b) < 1e-12 for a, b in zip(ratings.pool(mkt, mod, 1.0), mod)))
+    check("pooled probabilities sum to 1", abs(sum(ratings.pool(mkt, mod, 0.4)) - 1) < 1e-12)
+    lg = lambda p: tuple(math.log(x) for x in p)                      # noqa: E731
+    # Outcomes drawn exactly as the market says: the model deserves no weight.
+    rows = [(lg(mkt), lg(mod), 0)] * 50 + [(lg(mkt), lg(mod), 1)] * 30 + [(lg(mkt), lg(mod), 2)] * 20
+    fit = ratings.fit_weight(rows)
+    check("market-true data gives weight 0", fit["w"] < 1e-3 and fit["lo"] == 0.0, str(fit))
+    # Outcomes drawn as the model says: the model deserves all the weight.
+    rows = [(lg(mkt), lg(mod), 0)] * 20 + [(lg(mkt), lg(mod), 1)] * 30 + [(lg(mkt), lg(mod), 2)] * 50
+    fit = ratings.fit_weight(rows)
+    check("model-true data gives weight 1", fit["w"] > 0.999 and fit["lo"] > 0.3, str(fit))
+    # Halfway data lands in between, with an interval around it.
+    rows = ([(lg(mkt), lg(mod), 0)] * 35 + [(lg(mkt), lg(mod), 1)] * 30
+            + [(lg(mkt), lg(mod), 2)] * 35) * 20
+    fit = ratings.fit_weight(rows)
+    check("mixed data gives an interior weight inside its interval",
+          0.3 < fit["w"] < 0.7 and fit["lo"] < fit["w"] < fit["hi"], str(fit))
+    check("log likelihood matches the pooled probability",
+          abs(ratings.pool_loglik([(lg(mkt), lg(mod), 2)], 0.4)
+              - math.log(ratings.pool(mkt, mod, 0.4)[2])) < 1e-12)
+
+
 # ── gap census ───────────────────────────────────────────────────────────────
 
 def _event(eid="ev1", pin=(2.02, 3.6, 3.9), kickoff="2026-10-10T15:00:00Z", with_pin=True):
@@ -509,7 +585,8 @@ def run_all() -> None:
                test_runner_never_shows_the_future, test_leak_check, test_forecast_scores,
                test_bet_summary, test_baseline_matches_engine,
                test_best_price_uses_named_books_only, test_scorer, test_season_codes,
-               test_census, test_a1_checked_reference, test_group_diff):
+               test_census, test_a1_checked_reference, test_group_diff,
+               test_online_ratings, test_log_pool):
         fn()
     print("\n" + ("ALL HARNESS TESTS PASSED" if not _failures
                   else f"{len(_failures)} FAILURE(S): {_failures}"))
