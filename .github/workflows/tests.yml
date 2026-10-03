@@ -43,3 +43,7 @@ jobs:
 
       - name: Core package tests (sport-agnostic staking, de-vig, ledger, metrics)
         run: python core/test_core.py
+
+      - name: Paper-trading tests (offline, fake feeds and clock)
+        working-directory: paper
+        run: python test_paper.py
