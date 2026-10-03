@@ -61,9 +61,18 @@ class Health:
 class Loop:
     def __init__(self, jobs: list, health_path: str, stop_path: str, clock=utcnow):
         self.jobs, self.health, self.stop_path, self.clock = jobs, Health(health_path), stop_path, clock
+        self.heartbeat_path = os.path.join(os.path.dirname(health_path) or ".", "heartbeat.txt")
+
+    def beat(self) -> None:
+        """Record that the loop is alive, even when no job had anything to do."""
+        tmp = self.heartbeat_path + ".part"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(self.clock().isoformat(timespec="seconds"))
+        os.replace(tmp, self.heartbeat_path)
 
     def tick(self) -> list[tuple[str, str]]:
         """Run every due job once. Returns (job name, outcome) pairs."""
+        self.beat()
         done = []
         for job in self.jobs:
             now = self.clock()

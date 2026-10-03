@@ -246,8 +246,9 @@ def test_end_to_end() -> None:
 
     def judge(prompt, **kw):
         verdicts.append(prompt)
-        key = "pick|ev1|home|P1"
-        return {"verdicts": [{"key": key, "veto": True, "reason": "keeper injured"}]}, "ok"
+        key = "key pick|ev1|home|P1"          # Claude echoing extra words round the key
+        return {"verdicts": [{"key": key, "veto": True, "reason": "keeper injured"},
+                             {"key": "pick|nonexistent|home|P1", "veto": True}]}, "ok"
 
     paper, loop = make(w, d, judge=judge)
 
@@ -276,7 +277,9 @@ def test_end_to_end() -> None:
     j = paper2.judgments.records()
     check("Claude's verdict is logged next to the pick, not applied to it",
           len(j) == 1 and j[0]["veto"] is True and len(paper2.picks.records()) == 1)
-    check("the prompt carries the pick", "Queens Park Rangers" in verdicts[0])
+    check("the prompt carries the pick", "Queens Park Rangers" in verdicts[0]
+          and "[pick|ev1|home|P1]" in verdicts[0])
+    check("a verdict for a key that does not exist is ignored", len(j) == 1)
 
     # 30 minutes before kickoff: the closing job fetches Pinnacle again.
     w.pin = (1.95, 3.50, 4.00)
@@ -297,6 +300,7 @@ def test_end_to_end() -> None:
     check("profit and CLV of the settled pick",
           abs(bets[0]["profit"] - 1.40) < 1e-9 and abs(bets[0]["clv"] - (2.40 * fc - 1)) < 1e-9)
     card = open(os.path.join(d, "scorecard.md"), encoding="utf-8").read()
+    check("heartbeat written every tick", os.path.exists(os.path.join(d, "heartbeat.txt")))
     check("scorecard written with the settled bet and the veto split",
           "Settled: 1" in card and "Claude vetoed" in card and "Closing price captured for 1 of 1" in card,
           card[:400])

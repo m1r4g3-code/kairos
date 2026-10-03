@@ -7,7 +7,7 @@
 [![Version](https://img.shields.io/badge/version-2.0.0-blueviolet.svg)](https://github.com/m1r4g3-code/kairos/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-318%20passing-success.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-377%20passing-success.svg)](#testing)
 [![CI](https://github.com/m1r4g3-code/kairos/actions/workflows/tests.yml/badge.svg)](https://github.com/m1r4g3-code/kairos/actions/workflows/tests.yml)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](#license)
 
@@ -132,6 +132,8 @@ Kairos/
 │   ├── run_baseline.py run_a1.py … run_a56.py run_b0_holdout.py
 │   ├── census.py             #   forward log of soft-book prices against Pinnacle
 │   └── test_harness.py       #   117 checks
+├── paper/                   # forward paper-trading loop (Phase 4): main.py, jobs, feeds
+│   └── test_paper.py         #   offline tests with fake feeds, clock and Claude
 ├── research/                # holdout.json, hypotheses.md, runs.jsonl, results/
 ├── docs/                    # audit, research review, backtest baseline, improvements
 ├── ledger/                  # predictions, results, census
@@ -173,7 +175,7 @@ A result for an unknown id, or a second result for the same id, is refused. **Cl
 
 ## Testing
 
-**318 deterministic checks** across six suites, run on every push via [GitHub Actions](.github/workflows/tests.yml) (Python 3.10 / 3.11 / 3.12). Everything runs offline against made-up fixtures — no network, no key.
+**377 deterministic checks** across seven suites, run on every push via [GitHub Actions](.github/workflows/tests.yml) (Python 3.10 / 3.11 / 3.12). Everything runs offline against made-up fixtures — no network, no key.
 
 ```bash
 python engine/test_engine.py    # math, de-vig, derive, staking, orchestration
@@ -182,6 +184,7 @@ python engine/test_edge.py      # sharp reference, parsers, event matching
 python engine/test_sources.py   # data-adapter parsers
 python harness/test_harness.py  # loader, walk-forward, leak tests, ratings, census
 python core/test_core.py        # the sport-agnostic package on a non-football market
+python paper/test_paper.py      # paper trading: restarts, budget, closes, settlement, judgment
 ```
 
 The harness leak tests check that a strategy never sees a result dated on or after the day its odds were collected, and that scrambling every result and closing price changes no decision.

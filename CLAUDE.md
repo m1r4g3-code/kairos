@@ -42,6 +42,11 @@ python -c "import sys; sys.path.insert(0,'c:/Users/HomePC/Documents/Kairos/harne
 - If a fetch happens within 3 hours of kickoff, call `census.log_close(ev)` for the closing price.
 - `python harness/census.py summary` prints the gap share, CLV and the kill-rule reading.
 
+### Paper-trading loop (Phase 4) — running on this PC
+- Task Scheduler task **KairosPaper** runs `paper/main.py` at logon. Status: `python paper/main.py --status`; stop: `--stop`. Guide: `docs/paper-trading.md`.
+- It shares the Odds API key: the loop caps itself at 440 credits a month and leaves 60 for sessions. Check `paper/state/budget.json` before spending many credits by hand.
+- Census prices logged in a session get their closing price from the loop when their match is in a sport it can fetch.
+
 ### Backtest harness
 `harness/` (stdlib only): `run_baseline.py`, `run_a1.py`…`run_a4.py`, `test_harness.py`. Outcomes of every proposal: `docs/engine-improvements.md`. Sport-agnostic code (staking, de-vig, ledger, metrics) lives in `core/`; `engine/kelly.py`, `market.py`, `ledger.py` are shims, so old imports and `python engine/ledger.py …` still work. Holdout seasons are in `research/holdout.json` — never load them without a written reason. Write each new variant in `research/hypotheses.md` BEFORE running it.
 

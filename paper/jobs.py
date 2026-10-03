@@ -329,13 +329,14 @@ Your job is narrow. Veto a bet only for a concrete reason the price comparison c
 not see, for example: confirmed key injuries or suspensions announced after the
 prices were set, a likely data error (wrong teams, a stale or obviously wrong price),
 or the match not being played as listed. If you have no concrete reason, do not veto.
-You may search the web for team news. Do not give betting advice beyond this.
+Before deciding, search the web once per match for that match's latest team news.
+Do not give betting advice beyond this.
 
 Bets:
 {bets}
 
 Answer with one JSON object and nothing else:
-{{"verdicts": [{{"key": "<bet key>", "veto": true or false, "reason": "<one short sentence>"}}]}}"""
+{{"verdicts": [{{"key": "<the text inside the square brackets>", "veto": true or false, "reason": "<one short sentence>"}}]}}"""
 
 
 class Judge:
@@ -364,7 +365,7 @@ class Judge:
     def run(self, now: dt.datetime) -> str:
         j, todo = self.p.cfg["judgment"], self._todo(now)
         self.p.set_state("judged_utc", iso(now))      # one attempt per slot, even if it fails
-        lines = [f"- key {p['key']}: {p['home']} v {p['away']} ({self.p.cfg['leagues'][p['league']]['name']}), "
+        lines = [f"- [{p['key']}] {p['home']} v {p['away']} ({self.p.cfg['leagues'][p['league']]['name']}), "
                  f"kick-off {p['commence']}, {p['selection']} at {p['odds']} ({p['book']}), "
                  f"Pinnacle fair {p['fair_prob']:.3f}, edge {p['claimed_ev'] * 100:+.1f}%" for p in todo]
         answer, status = self.p.judge(JUDGE_PROMPT.format(bets="\n".join(lines)),
@@ -373,11 +374,14 @@ class Judge:
         if answer is None:
             self.p.health.write("warn", "judgment", f"no judgment: {status}", now)
             return f"no judgment ({status}); picks unaffected"
-        wanted = {p["key"] for p in todo}
+        wanted = sorted((p["key"] for p in todo), key=len, reverse=True)
         n = 0
         for v in answer.get("verdicts", []) if isinstance(answer.get("verdicts"), list) else []:
-            if isinstance(v, dict) and v.get("key") in wanted:
-                n += self.p.judgments.add({"key": f"judgment|{v['key']}", "pick_key": v["key"],
+            if not isinstance(v, dict):
+                continue
+            key = next((k for k in wanted if k in str(v.get("key", ""))), None)  # tolerates "key pick|..."
+            if key:
+                n += self.p.judgments.add({"key": f"judgment|{key}", "pick_key": key,
                                            "veto": bool(v.get("veto")),
                                            "reason": str(v.get("reason", ""))[:300],
                                            "model": j["model"], "seen_utc": iso(now)})
@@ -451,12 +455,24 @@ def scorecard(paper: Paper, now: dt.datetime) -> str:
               if now - parse_time(h["utc"]) <= dt.timedelta(hours=24)]
     errors = [h for h in recent if h["level"] in ("error", "warn")]
     last_beat = paper.health.tail(1)
+    try:
+        with open(os.path.join(paper.dir, "heartbeat.txt"), encoding="utf-8") as f:
+            heartbeat = f.read().strip()
+    except FileNotFoundError:
+        heartbeat = None
+    try:
+        with open(os.path.join(paper.dir, "loop.lock"), encoding="utf-8") as f:
+            running = store._pid_alive(int(f.read().split()[0]))
+    except (OSError, ValueError, IndexError):
+        running = False
     L = [f"# Paper trading scorecard", "",
          f"Written {now.astimezone().strftime('%Y-%m-%d %H:%M')} (local). Strategy P1: best "
          f"price in the feed against Pinnacle's fair price, +{paper.cfg['min_edge'] * 100:.0f}%, "
          "1 unit flat. No money involved.", "",
          "## Health", "",
-         f"- Last activity: {last_beat[0]['utc'] if last_beat else 'none'}",
+         f"- Loop running now: {'yes' if running else 'NO'}. Last heartbeat: {heartbeat or 'none'} "
+         f"(it beats every few minutes while running)",
+         f"- Last job that did something: {last_beat[0]['utc'] if last_beat else 'none'}",
          f"- Warnings and errors in the last 24 hours: {len(errors)}"]
     L += [f"  - {h['utc']} {h['level']} {h['what']}: {h['detail'][:160]}" for h in errors[-5:]]
     L += [f"- Odds API credits this month: {b['spent']} spent by this loop, cap {b['cap']}, "
