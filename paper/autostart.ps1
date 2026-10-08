@@ -13,6 +13,7 @@ param([switch]$Remove)
 $TaskName = "KairosPaper"
 if ($Remove) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName "KairosPaperWake" -Confirm:$false -ErrorAction SilentlyContinue
     Write-Output "Removed task $TaskName (if it existed)."
     exit 0
 }

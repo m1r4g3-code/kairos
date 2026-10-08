@@ -16,7 +16,9 @@ others. Creating the stop file ends the loop at the next tick.
 
 A network failure (no connection, DNS failure, reset, timeout) is not a bug in
 the job: it is logged once as a warning when it starts and once when the job
-next gets through, however many ticks fail in between.
+next gets through, however many ticks fail in between. While any job is
+offline the loop retries every `retry_s` seconds instead of waiting a full
+sleep, and when the PC comes back from sleep (the clock jumps) it ticks at once.
 
 Pure stdlib. Nothing here knows about football.
 """
@@ -115,15 +117,23 @@ class Loop:
     def stop_requested(self) -> bool:
         return os.path.exists(self.stop_path)
 
-    def run_forever(self, sleep_s: int = 300) -> None:
+    def run_forever(self, sleep_s: int = 300, retry_s: int = 60, step_s: float = 5,
+                    wall=time.time, nap=time.sleep) -> None:
         self.health.write("info", "loop", "started")
         try:
             while not self.stop_requested():
                 self.tick()
-                for _ in range(max(1, sleep_s // 5)):          # wake every 5 s to notice a stop
+                wait = min(sleep_s, retry_s) if self._down else sleep_s
+                for _ in range(max(1, int(wait // step_s))):   # wake every few seconds to notice a stop
                     if self.stop_requested():
                         break
-                    time.sleep(5)
+                    before = wall()
+                    nap(step_s)
+                    gap = wall() - before
+                    if gap > step_s + 60:                      # the PC was asleep: catch up now
+                        self.health.write("info", "loop", f"resumed after {gap / 60:.0f} minutes asleep")
+                        nap(min(20, step_s * 4))               # give the network a moment to reconnect
+                        break
         finally:
             self.health.write("info", "loop", "stopped")
             try:

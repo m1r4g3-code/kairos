@@ -26,5 +26,10 @@
   "budget_reserve": 60,
   "judgment": {"enabled": true, "local_hours": [10, 19], "min_gap_hours": 4,
                "model": "sonnet", "timeout_seconds": 600, "allowed_tools": "WebSearch"},
-  "loop_sleep_seconds": 300
+  "loop_sleep_seconds": 300,
+  "offline_retry_seconds": 60,
+  "keep_awake_for_close": true,
+  "keep_awake_lead_minutes": 90,
+  "wake_for_close": false,
+  "wake_lead_minutes": 40
 }

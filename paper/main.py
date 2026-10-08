@@ -36,8 +36,12 @@ def load_config(path: str = os.path.join(HERE, "config.json")) -> dict:
 
 
 def build(cfg: dict, state_dir: str = STATE, **kw) -> tuple[jobs.Paper, Loop]:
+    import power
+    awake, wake = kw.pop("set_awake", power.set_awake), kw.pop("register_wake", power.register_wake)
     paper = jobs.Paper(cfg, state_dir, **kw)
-    loop = Loop([jobs.Settle(paper), jobs.Closing(paper), jobs.Snapshot(paper),
+    closing = jobs.Closing(paper)
+    loop = Loop([power.KeepAwake(paper, closing, awake), jobs.Settle(paper), closing,
+                 jobs.Snapshot(paper), power.Wake(paper, closing, wake),
                  jobs.Judge(paper), jobs.Scorecard(paper)],
                 os.path.join(state_dir, "health.log"), os.path.join(state_dir, "STOP"))
     return paper, loop
@@ -67,7 +71,7 @@ def main(argv: list[str]) -> int:
                 for name, msg in loop.tick():
                     print(f"{name}: {msg}")
                 return 0
-            loop.run_forever(cfg["loop_sleep_seconds"])
+            loop.run_forever(cfg["loop_sleep_seconds"], cfg.get("offline_retry_seconds", 60))
     except RuntimeError as e:
         print(e)
         return 1

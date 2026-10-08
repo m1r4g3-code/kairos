@@ -46,6 +46,7 @@ python -c "import sys; sys.path.insert(0,'c:/Users/HomePC/Documents/Kairos/harne
 - Task Scheduler task **KairosPaper** runs `paper/main.py` at logon. Status: `python paper/main.py --status`; stop: `--stop`. Guide: `docs/paper-trading.md`.
 - It shares the Odds API key: the loop caps itself at 440 credits a month and leaves 60 for sessions. Check `paper/state/budget.json` before spending many credits by hand.
 - Census prices logged in a session get their closing price from the loop when their match is in a sport it can fetch.
+- The loop keeps the PC from idle-sleeping in the 90 minutes before a kickoff with a pick, and catches up at once after sleep. Waking from sleep (`wake_for_close` in `paper/config.json`) is built but OFF; only the owner turns it on.
 - Pinnacle closes are only captured if the PC is awake and online in the hour before kickoff (0 of 3 so far). Missed ones get a **stand-in CLV** from Football-Data's Betfair Exchange close (`paper/state/fd_closes.jsonl`, research M1). Quote it as a stand-in, never as Pinnacle CLV, and never count it toward the 300-pick test.
 
 ### Backtest harness

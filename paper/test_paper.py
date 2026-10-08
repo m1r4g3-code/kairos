@@ -99,9 +99,12 @@ def make(world, state_dir, judge=None, cfg_over=None):
                                cfg["budget_monthly_cap"], cfg["budget_reserve"])
     client = feeds.OddsClient("KEY", "https://api.example/v4", budget, world.http)
     census_path = os.path.join(state_dir, "census.jsonl")
+    world.awake, world.wakes = getattr(world, "awake", []), getattr(world, "wakes", [])
     paper, loop = run.build(cfg, state_dir, odds_client=client, http=world.http,
                             judge=judge or (lambda *a, **k: (None, "disabled in test")),
-                            census_path=census_path)
+                            census_path=census_path,
+                            set_awake=lambda on: world.awake.append(on) or True,
+                            register_wake=lambda t: world.wakes.append(t) or (True, ""))
     paper.budget = budget
     return paper, loop
 
@@ -410,6 +413,58 @@ def test_stand_in_close_backfill() -> None:
           not jobs.Settle(paper)._owed_fd_close(w.kickoff + dt.timedelta(days=30)))
 
 
+def test_power() -> None:
+    # Keep-awake follows the closing window; the wake task is off unless switched on.
+    w, d = World(), tempfile.mkdtemp()
+    paper, loop = make(w, d)
+    tick(loop, T0)                                           # pick made, kickoff in 50 hours
+    check("no stay-awake request two days before kickoff", w.awake == [] and w.wakes == [])
+    out = tick(loop, w.kickoff - dt.timedelta(minutes=85))
+    check("stay-awake requested once the closing window is near",
+          w.awake == [True] and "keep-awake" in out, str(out))
+    tick(loop, w.kickoff - dt.timedelta(minutes=80))
+    check("not asked again while it is already on", w.awake == [True])
+    tick(loop, w.kickoff - dt.timedelta(minutes=30))         # closing price captured here
+    tick(loop, w.kickoff - dt.timedelta(minutes=25))
+    check("released as soon as the closing price is in", w.awake == [True, False]
+          and len(paper.closes.records()) == 1, str(w.awake))
+    check("wake task never set while the option is off", w.wakes == [])
+
+    w2, d2 = World(), tempfile.mkdtemp()
+    paper2, loop2 = make(w2, d2, cfg_over={"wake_for_close": True})
+    tick(loop2, T0)
+    tick(loop2, at(1))
+    want = (w2.kickoff - dt.timedelta(minutes=40)).astimezone()
+    check("with the option on, one wake is set 40 minutes before kickoff",
+          len(w2.wakes) == 1 and w2.wakes[0] == want, str(w2.wakes))
+    paper2b, loop2b = make(w2, d2, cfg_over={"wake_for_close": True})
+    tick(loop2b, at(2))
+    check("a restart does not set the same wake again", len(w2.wakes) == 1)
+
+    # The loop ticks at once after the PC has been asleep, and retries sooner while offline.
+    d3 = tempfile.mkdtemp()
+    ticks, clock = [], [1000.0]
+
+    class Count:
+        name = "count"
+        def due(self, now): return True
+        def run(self, now):
+            ticks.append(clock[0])
+            if len(ticks) == 3:
+                open(os.path.join(d3, "STOP"), "w").close()
+            return "ok"
+
+    def nap(s):
+        clock[0] += 3600 if (len(ticks) == 1 and clock[0] == 1005.0) else s   # one long sleep
+
+    loop3 = scheduler.Loop([Count()], os.path.join(d3, "h.log"), os.path.join(d3, "STOP"), clock=lambda: T0)
+    loop3.run_forever(sleep_s=300, wall=lambda: clock[0], nap=nap)
+    h3 = [x["detail"] for x in scheduler.Health(os.path.join(d3, "h.log")).tail()]
+    check("after a long sleep the loop ticks straight away and says so",
+          ticks[1] - ticks[0] < 3700 and ticks[2] - ticks[1] == 300
+          and any("resumed after 60 minutes asleep" in x for x in h3), f"{ticks} {h3}")
+
+
 def test_judgment_failure_is_safe() -> None:
     w, d = World(), tempfile.mkdtemp()
     paper, loop = make(w, d, judge=lambda *a, **k: (None, "usage limit reached"))
@@ -444,7 +499,7 @@ def test_status_command() -> None:
 def run_all() -> None:
     for fn in (test_store, test_budget, test_scheduler, test_judgment_fails_safe,
                test_names_and_feeds, test_end_to_end, test_missed_windows_and_budget,
-               test_stand_in_close_backfill,
+               test_stand_in_close_backfill, test_power,
                test_judgment_failure_is_safe, test_census_closing, test_status_command):
         fn()
     print("\n" + ("ALL PAPER TESTS PASSED" if not _failures

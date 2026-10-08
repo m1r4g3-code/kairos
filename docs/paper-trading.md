@@ -63,7 +63,23 @@ Open `paper/state/scorecard.md` (or run `--status`).
 | Claude unavailable (offline, usage limit, logged out) | The judgment pass logs a warning and tries again at the next scheduled hour. Picks, closes and settlement are unaffected. |
 | Odds API budget used up | Snapshots stop first; credits are held back for closing prices already owed. Each refusal is logged. |
 
-The loop does not wake a sleeping PC. Sleep counts as "off".
+Sleep counts as "off", with three helpers (added 2026-10-08):
+
+- **Catching up.** When the PC comes back from sleep the loop notices within
+  seconds, writes "resumed after N minutes asleep", and runs every due job at
+  once. While the internet is unreachable it retries every minute.
+- **Staying awake for a closing price (on).** From 90 minutes before the
+  kickoff of a match with a pick until its closing price is in, the loop asks
+  Windows not to fall asleep from idleness. Closing the lid or pressing the
+  power button still sleeps the PC. Switch: `keep_awake_for_close` in
+  `paper/config.json`.
+- **Waking for a closing price (off).** With `wake_for_close` set to `true`,
+  the loop sets a Task Scheduler task, `KairosPaperWake`, that wakes the PC 40
+  minutes before the next such kickoff. It is off because it can wake a laptop
+  shut in a bag, and it is useless without internet at that moment. Turn it on
+  only when the PC is plugged in at home on Wi-Fi, then restart the loop
+  (`--stop`, then start). Windows' "allow wake timers" setting is already on
+  for this PC, on mains and on battery.
 
 ## Files
 
@@ -178,7 +194,13 @@ Checked since (to 2026-10-08):
 - Start at logon: the health log shows the loop starting by itself on 4, 5 and
   8 October.
 
+Checked on this PC without a real sleep (2026-10-08): the stay-awake request is
+accepted by Windows, and the wake task registers with its wake flag set (a test
+task was created and removed).
+
 Not yet checked live:
+- Waking from a real sleep, and the catch-up after a real sleep (both tested
+  offline only).
 - A Pinnacle closing-price fetch. The PC was asleep or offline at every kickoff
   so far: 0 of 3. The offline tests cover it.
 - The quiet offline handling on a real outage (tested offline only).
