@@ -410,3 +410,34 @@ The development result did not carry forward.
   counted price coverage only; no results were used.)
 - Holdout reads so far: three (A3 handicap test, B0-H, the coverage count), 117
   lines in `research/holdout_access.jsonl`.
+
+## M1: can Football-Data's closing prices stand in for Pinnacle's close?
+
+Written 2026-10-08, before the run. This is a measurement check, not a strategy.
+
+**Why.** The paper loop has captured a closing price for 0 of 3 kicked-off
+picks: the PC was asleep at kickoff each time. Without a closing price there is
+no CLV, and CLV is the measure. Football-Data's results file carries closing
+prices for every match (market average `AvgC`, Bet365 `B365C`, Betfair Exchange
+`BFEC`), and the loop already downloads that file to settle. If one of those,
+with the margin removed, gives nearly the same CLV as Pinnacle's close, a pick
+whose close was missed can still be scored.
+
+**Test.** Development seasons only; the holdout is not read. Two bet sets:
+B0 (Bet365 against Pinnacle's fair price, +3%) and the best-of-books variant at
++3% (the closest thing to the paper loop's P1). For every 1X2 bet that has both
+Pinnacle's close and the proxy's close, compute CLV both ways (power de-vig)
+and report: number of bets, mean CLV each way, mean of proxy minus Pinnacle with
+a 95% interval, the correlation between the two, and how often they agree in
+sign.
+
+**Prediction.** The market-average close will read within 0.5 points of
+Pinnacle's on the mean, with correlation above 0.9. Bet365's close will be a
+little worse. I have no expectation for the exchange (few seasons carry it).
+
+**Rule.** A proxy is accepted for the scorecard if, on both bet sets, the mean
+difference is within 0.5 points either way and the correlation is at least 0.9.
+If accepted it is shown as its own labelled row and never mixed into the
+Pinnacle CLV figure; its measured bias is printed beside it. The Phase 5 gate
+(300 settled picks, CLV interval above zero) stays on Pinnacle closes only.
+If no proxy passes, none is used and the capture problem is reported as open.
