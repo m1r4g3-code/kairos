@@ -459,3 +459,29 @@ was wrong about the market average.
   Phase 5 gate. The scorecard also reports stand-in minus Pinnacle on live picks
   that have both, so the 156-bet check grows with the forward test. If that live
   difference leaves the 0.5-point band once it has 100 picks, drop the stand-in.
+
+## E1: does a gap against Pinnacle survive on venues that allow automation?
+
+Written 2026-10-08, before the run, for the Phase 5 design document. The brief
+asks which edge, if any, survives on automatable venues.
+
+**E1a.** Development seasons only. Bet the Betfair Exchange pre-match price
+(Football-Data `BFE`) where the price after commission beats Pinnacle's fair
+price (power de-vig) by 3%. Commission on winnings of 0%, 2% and 5%. Report the
+number of bets, CLV against Pinnacle's close and return per bet, with intervals.
+Betfair is not open to the owner; it is the only exchange with price history in
+the files, so it stands for "an exchange".
+
+**E1b.** The paper loop's stored snapshots (3 to 8 October 2026): for Matchbook,
+Smarkets and Betfair in The Odds API feed, count the prices that beat
+Pinnacle's fair price, and by 3%, before and after commission (Matchbook 4%,
+Smarkets 2%, Betfair 5%), beside three ordinary bookmakers for scale. This is a
+count over a few days with no liquidity information, not a test.
+
+**Prediction.** E1a: far fewer bets than the Bet365 baseline; at 5% commission
+almost none; CLV after commission at or below zero. E1b: exchange prices beat
+Pinnacle's fair price often before commission and rarely by 3% after it.
+
+**Reading.** If CLV after commission has an interval above zero with at least
+300 bets, the design document says an exchange edge may exist and names it.
+Otherwise it says none has been shown. Nothing here authorises building.
