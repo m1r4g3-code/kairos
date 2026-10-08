@@ -485,3 +485,18 @@ Pinnacle's fair price often before commission and rarely by 3% after it.
 **Reading.** If CLV after commission has an interval above zero with at least
 300 bets, the design document says an exchange edge may exist and names it.
 Otherwise it says none has been shown. Nothing here authorises building.
+
+**E1 result (2026-10-08, `research/results/e1_automatable.md`).** No edge shown
+on an exchange.
+- E1a: 1,752 matches carry both prices. 0% commission: 248 bets, CLV +1.3%
+  (-0.7 to +3.5), return -3.2% (-30.4 to +26.2). 2%: 114 bets, CLV +1.8% (-1.7
+  to +5.4). 5%: 37 bets, CLV +0.9% (-6.9 to +9.4). Every interval includes zero
+  and no row reaches 300 bets. I predicted CLV at or below zero; the point
+  figures are slightly positive, which at these sizes is not evidence.
+- E1b: of about 210 prices per venue, beating Pinnacle's fair price by 3% after
+  commission: Matchbook 2, Smarkets 1, Betfair 1. Before commission, above fair
+  at all: Matchbook 42, Betfair 40, Smarkets 18. As predicted.
+- Old snapshot lines hold prices in the feed's order (alphabetical by team,
+  draw last), the same for every bookmaker in an event (checked on 339 cached
+  events). New lines are stored home, draw, away and say so.
+- Used in `docs/execution-design.md`. Nothing built.

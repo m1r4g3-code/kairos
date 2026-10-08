@@ -180,13 +180,18 @@ class Snapshot:
                 if ev["id"] not in wanted or parse_time(ev["commence_time"]) <= lead:
                     continue                      # never pick a match about to start
                 got = sharp_and_best(ev, cfg)
-                books = {b["key"]: [o["price"] for o in m["outcomes"]]
-                         for b in ev.get("bookmakers", []) for m in b.get("markets", [])
-                         if m.get("key") == "h2h"}
+                order = [ev["home_team"], "Draw", ev["away_team"]]
+                books = {}
+                for b in ev.get("bookmakers", []):
+                    for m in b.get("markets", []):
+                        by_name = {o["name"]: o["price"] for o in m["outcomes"]}
+                        if m.get("key") == "h2h" and set(by_name) == set(order):
+                            books[b["key"]] = [by_name[n] for n in order]   # always home, draw, away
                 self.p.snaps.add({"key": f"snap|{ev['id']}", "event_id": ev["id"],
                                   "sport": sport, "league": lg, "seen_utc": iso(now),
                                   "commence": ev["commence_time"], "home": ev["home_team"],
                                   "away": ev["away_team"], "has_sharp": got is not None,
+                                  "order": "home,draw,away",   # older lines: the feed's order (alphabetical, draw last)
                                   "books": books})
                 if not got:
                     continue

@@ -1,0 +1,108 @@
+{
+ "E1a": {
+  "matches_with_both_prices": 1752,
+  "variants": {
+   "bfe[0% commission]": {
+    "bets": 248,
+    "clv": 0.013256482664678222,
+    "clv_ci": [
+     -0.006517079463398689,
+     0.035392050068937926
+    ],
+    "roi": -0.03233870967741935,
+    "roi_ci": [
+     -0.30375,
+     0.26213709677419356
+    ]
+   },
+   "bfe[2% commission]": {
+    "bets": 114,
+    "clv": 0.017886962715199375,
+    "clv_ci": [
+     -0.01705952530424866,
+     0.05409059245949394
+    ],
+    "roi": -0.06559122807017545,
+    "roi_ci": [
+     -0.5117701754385965,
+     0.44395438596491227
+    ]
+   },
+   "bfe[5% commission]": {
+    "bets": 37,
+    "clv": 0.009332676488722446,
+    "clv_ci": [
+     -0.06862536130306006,
+     0.09373299803614316
+    ],
+    "roi": -0.547391891891892,
+    "roi_ci": [
+     -1.0,
+     0.222635135135135
+    ]
+   }
+  }
+ },
+ "E1b": {
+  "books": {
+   "betfair_ex_eu": {
+    "commission": 0.05,
+    "gross_above_0": 39,
+    "gross_above_3pct": 4,
+    "net_above_0": 3,
+    "net_above_3pct": 1,
+    "prices": 210
+   },
+   "betfair_ex_uk": {
+    "commission": 0.05,
+    "gross_above_0": 40,
+    "gross_above_3pct": 4,
+    "net_above_0": 3,
+    "net_above_3pct": 1,
+    "prices": 210
+   },
+   "betway": {
+    "commission": 0.0,
+    "gross_above_0": 1,
+    "gross_above_3pct": 0,
+    "net_above_0": 1,
+    "net_above_3pct": 0,
+    "prices": 195
+   },
+   "matchbook": {
+    "commission": 0.04,
+    "gross_above_0": 42,
+    "gross_above_3pct": 8,
+    "net_above_0": 9,
+    "net_above_3pct": 2,
+    "prices": 213
+   },
+   "onexbet": {
+    "commission": 0.0,
+    "gross_above_0": 6,
+    "gross_above_3pct": 3,
+    "net_above_0": 6,
+    "net_above_3pct": 3,
+    "prices": 207
+   },
+   "smarkets": {
+    "commission": 0.02,
+    "gross_above_0": 18,
+    "gross_above_3pct": 3,
+    "net_above_0": 10,
+    "net_above_3pct": 1,
+    "prices": 210
+   },
+   "williamhill": {
+    "commission": 0.0,
+    "gross_above_0": 1,
+    "gross_above_3pct": 0,
+    "net_above_0": 1,
+    "net_above_3pct": 0,
+    "prices": 210
+   }
+  },
+  "snapshots": 72
+ },
+ "commit": "26eae57"
+}
