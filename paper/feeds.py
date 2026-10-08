@@ -64,6 +64,21 @@ def season_code(day: dt.date) -> str:
     return f"{y % 100:02d}{(y + 1) % 100:02d}"
 
 
+CLOSE_BOOKS = ("BFE", "Avg", "Max", "B365", "PS")     # closing 1X2 columns: <book>CH/CD/CA
+
+
+def _closing(r: dict) -> dict:
+    out = {}
+    for b in CLOSE_BOOKS:
+        try:
+            v = [float(r[f"{b}C{x}"]) for x in "HDA"]
+        except (KeyError, ValueError, TypeError):
+            continue
+        if all(x > 1.0 for x in v):
+            out[b] = v
+    return out
+
+
 def parse_results(text: str) -> list[dict]:
     rows = []
     for r in csv.DictReader(io.StringIO(text.lstrip("﻿"))):
@@ -71,7 +86,7 @@ def parse_results(text: str) -> list[dict]:
             date = dt.datetime.strptime(r["Date"].strip(),
                                         "%d/%m/%Y" if len(r["Date"].strip()) == 10 else "%d/%m/%y").date()
             rows.append({"date": date, "home": r["HomeTeam"].strip(), "away": r["AwayTeam"].strip(),
-                         "fthg": int(r["FTHG"]), "ftag": int(r["FTAG"])})
+                         "fthg": int(r["FTHG"]), "ftag": int(r["FTAG"]), "close": _closing(r)})
         except (KeyError, ValueError, TypeError, AttributeError):
             continue
     return rows

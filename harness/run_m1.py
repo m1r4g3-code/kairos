@@ -16,7 +16,6 @@ import sys
 
 import fd_data
 import fd_fetch
-import market
 import metrics
 import runlog
 import score
@@ -55,7 +54,7 @@ def main() -> None:
             for proxy, cols in PROXIES.items():
                 v = next((post.close_1x2[c] for c in cols if c in post.close_1x2), None)
                 try:
-                    fair = market.devig_power(list(v)) if v else None
+                    fair = score.market.devig_power(list(v)) if v else None
                 except ValueError:
                     fair = None
                 rec[proxy] = bet.odds * fair[bet.selection] - 1.0 if fair else None

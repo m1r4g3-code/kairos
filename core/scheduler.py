@@ -14,6 +14,10 @@ A job is any object with `name`, `due(now) -> bool` and `run(now) -> str`.
 An exception in one job is logged to the health file and does not stop the
 others. Creating the stop file ends the loop at the next tick.
 
+A network failure (no connection, DNS failure, reset, timeout) is not a bug in
+the job: it is logged once as a warning when it starts and once when the job
+next gets through, however many ticks fail in between.
+
 Pure stdlib. Nothing here knows about football.
 """
 
@@ -28,6 +32,13 @@ import traceback
 
 def utcnow() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
+
+
+def is_offline(e: BaseException) -> bool:
+    """True for a failure to reach a server at all; an HTTP error status is not one."""
+    if hasattr(e, "code"):                       # urllib.error.HTTPError: the server answered
+        return False
+    return isinstance(e, (OSError, TimeoutError))    # URLError, socket and ssl errors are OSErrors
 
 
 class Health:
@@ -62,6 +73,7 @@ class Loop:
     def __init__(self, jobs: list, health_path: str, stop_path: str, clock=utcnow):
         self.jobs, self.health, self.stop_path, self.clock = jobs, Health(health_path), stop_path, clock
         self.heartbeat_path = os.path.join(os.path.dirname(health_path) or ".", "heartbeat.txt")
+        self._down: dict = {}          # job name -> [first failure time, failed ticks]
 
     def beat(self) -> None:
         """Record that the loop is alive, even when no job had anything to do."""
@@ -77,15 +89,27 @@ class Loop:
         for job in self.jobs:
             now = self.clock()
             try:
-                if not job.due(now):
-                    continue
-                msg = job.run(now) or "ok"
+                due = job.due(now)
+                msg = (job.run(now) or "ok") if due else None
+            except Exception as e:          # one failing job must not stop the rest
+                if is_offline(e):
+                    seen = self._down.setdefault(job.name, [now, 0])
+                    seen[1] += 1
+                    if seen[1] == 1:
+                        self.health.write("warn", job.name, f"offline: {type(e).__name__}: {e}"[:300], now)
+                    done.append((job.name, f"offline: {e}"))
+                else:
+                    self.health.write("error", job.name,
+                                      f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=3)}", now)
+                    done.append((job.name, f"error: {e}"))
+                continue
+            was_down = self._down.pop(job.name, None)
+            if was_down:
+                self.health.write("info", job.name, f"back online after {was_down[1]} failed "
+                                  f"tries since {was_down[0].isoformat(timespec='seconds')}", now)
+            if msg is not None:
                 self.health.write("info", job.name, msg, now)
                 done.append((job.name, msg))
-            except Exception as e:          # one failing job must not stop the rest
-                self.health.write("error", job.name,
-                                  f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=3)}", now)
-                done.append((job.name, f"error: {e}"))
         return done
 
     def stop_requested(self) -> bool:

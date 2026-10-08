@@ -44,7 +44,10 @@ Open `paper/state/scorecard.md` (or run `--status`).
 4. **The table.** The column to watch is **CLV** and its interval. A return per bet
    means little until there are hundreds of settled bets. The two "Claude vetoed /
    did not veto" rows show whether the judgment pass picks out worse bets.
-5. **Census.** SportyBet prices logged from screenshots, how often they beat
+5. **Stand-in closing price.** CLV for picks whose Pinnacle close was missed,
+   measured against the Betfair Exchange closing price in the results file. Read
+   it as a rough guide; see "When the closing price is missed" below.
+6. **Census.** SportyBet prices logged from screenshots, how often they beat
    Pinnacle's fair price, and their CLV once closing prices exist.
 
 ## What survives the PC being off
@@ -53,7 +56,8 @@ Open `paper/state/scorecard.md` (or run `--status`).
 |---|---|
 | Killed or PC shut down mid-job | Every file is written whole or not at all; on restart nothing is lost or doubled. |
 | Off when a match entered the 60-hour window | Picked up at the next run, as long as kickoff is still more than 3 hours away. Otherwise skipped: no late picks. |
-| Off at kickoff | No closing price for that match. It is counted as missed, never faked. The pick still settles; its CLV is blank. |
+| Off at kickoff | No Pinnacle closing price for that match. It is counted as missed, never faked. The pick still settles; its CLV is blank, and it gets a stand-in CLV from the results file. |
+| Online but the odds service cannot be reached | One warning line when it starts, one line when it is back ("back online after N failed tries"). Jobs retry at every tick in between. |
 | Off when results came in | Settled at the next run (results are checked every 6 hours). |
 | Started twice | The second copy exits at once ("another copy is running"). |
 | Claude unavailable (offline, usage limit, logged out) | The judgment pass logs a warning and tries again at the next scheduled hour. Picks, closes and settlement are unaffected. |
@@ -71,6 +75,7 @@ All in `paper/state/` (gitignored: the data stays on this PC).
 | `snapshots.jsonl` | Every bookmaker's 1X2 price at pick time, for every watched match, picked or not |
 | `closes.jsonl` | Pinnacle's price shortly before kickoff, per match with a pick |
 | `results.jsonl` | Final score per match, or "unmatched" after 10 days |
+| `fd_closes.jsonl` | Closing prices from the results file per settled match: Betfair Exchange, market average, market best, Bet365 |
 | `judgments.jsonl` | Claude's verdict per pick: veto or not, one-line reason, model |
 | `scorecard.md` | The summary above, rewritten daily and after each settlement |
 | `health.log` | One line per job that did something, and every warning or error |
@@ -80,6 +85,27 @@ All in `paper/state/` (gitignored: the data stays on this PC).
 
 The SportyBet census stays in `ledger/census.jsonl`. The loop adds closing prices
 to it for any census match it can see.
+
+## When the closing price is missed
+
+The PC was asleep at kickoff for the first three picks, so none has a Pinnacle
+closing price. Football-Data's results file carries closing prices for every
+match, and the loop already downloads it to settle. I tested on past seasons
+whether any of those gives the same CLV as Pinnacle's close (`research/hypotheses.md`,
+M1; numbers in `research/results/m1_close_proxy.md`):
+
+| Closing price used | Bets compared | CLV reads, against Pinnacle's | Verdict |
+|---|---|---|---|
+| Betfair Exchange | 156 | 0.1 points lower (-0.6 to +0.4) | Used as the stand-in |
+| Market average | 2,518 | 0.7 points lower (-0.8 to -0.5) | Not used: steady bias |
+| Bet365 | 2,516 | 2.4 points lower (-2.7 to -2.2) | Not used |
+
+The exchange figure rests on 156 bets from one season of five leagues, and one
+bet can differ from Pinnacle's reading by about 3 points. So the scorecard
+shows it in its own section, prints the live difference on picks that have both
+closes, and it never counts toward the 300-pick test for Phase 5. That test
+needs Pinnacle closes, which means the PC awake and online in the hour before
+kickoff.
 
 ## Moving it to another machine
 
@@ -145,11 +171,17 @@ Checked on 2026-10-03:
   searches, none vetoed.
 - The task installed, started, stopped and restarted; a second copy refused.
 
+Checked since (to 2026-10-08):
+- Settlement on real data: the three League Two picks settled on 5 October from
+  Football-Data's file (all three lost). Their stand-in closing prices were
+  stored on 8 October.
+- Start at logon: the health log shows the loop starting by itself on 4, 5 and
+  8 October.
+
 Not yet checked live:
-- A closing-price fetch and a settlement on real data (the first ones fall due on
-  3 October at about 14:30 and on the next Football-Data update). The offline tests
-  cover both.
-- Behaviour after a full reboot and a fresh logon.
+- A Pinnacle closing-price fetch. The PC was asleep or offline at every kickoff
+  so far: 0 of 3. The offline tests cover it.
+- The quiet offline handling on a real outage (tested offline only).
 - What happens when the Claude Code login expires or the Pro usage limit is hit
   (the code treats both as "no judgment", but I have not seen the real messages).
 - Team-name matching on leagues other than the Championship file I looked at.

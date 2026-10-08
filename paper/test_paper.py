@@ -60,8 +60,8 @@ class World:
         self.kickoff = at(50)                              # Saturday 11:00 UTC
         self.pin = (2.10, 3.40, 3.60)
         self.soft = (2.40, 3.30, 3.40)                     # home clearly above Pinnacle fair
-        self.csv = ("Div,Date,HomeTeam,AwayTeam,FTHG,FTAG,FTR\n"
-                    "E1,10/10/2026,QPR,West Brom,2,0,H\n")
+        self.csv = ("Div,Date,HomeTeam,AwayTeam,FTHG,FTAG,FTR,BFECH,BFECD,BFECA,AvgCH,AvgCD,AvgCA\n"
+                    "E1,10/10/2026,QPR,West Brom,2,0,H,2.00,3.60,4.10,1.95,3.45,3.90\n")
 
     def event(self, pin=None, soft=None, eid="ev1", kickoff=None, with_pin=True):
         pin, soft = pin or self.pin, soft or self.soft
@@ -177,6 +177,39 @@ def test_scheduler() -> None:
           and out["boom"].startswith("error"))
     h = scheduler.Health(os.path.join(d, "h.log")).tail()
     check("the failure is in the health log", any(x["level"] == "error" and x["what"] == "boom" for x in h))
+    # A network failure is one warning when it starts and one line when it ends.
+    import urllib.error
+
+    class Net:
+        name = "net"
+        fail = None
+        def due(self, now): return True
+        def run(self, now):
+            if self.fail:
+                raise self.fail
+            return "fetched"
+
+    d2, net = tempfile.mkdtemp(), Net()
+    loop2 = scheduler.Loop([net, Fine()], os.path.join(d2, "h.log"), os.path.join(d2, "STOP"),
+                           clock=lambda: T0)
+    net.fail = urllib.error.URLError(ConnectionResetError(10054, "reset"))
+    outs = [dict(loop2.tick()) for _ in range(4)]
+    h2 = scheduler.Health(os.path.join(d2, "h.log")).tail()
+    mine = [x for x in h2 if x["what"] == "net"]
+    check("four offline ticks write one warning and no error",
+          [x["level"] for x in mine] == ["warn"] and "Traceback" not in mine[0]["detail"]
+          and outs[3]["net"].startswith("offline") and outs[3]["fine"] == "did it", str(mine))
+    net.fail = None
+    loop2.tick()
+    mine = [x for x in scheduler.Health(os.path.join(d2, "h.log")).tail() if x["what"] == "net"]
+    check("coming back online is logged once with the count",
+          [x["level"] for x in mine] == ["warn", "info", "info"]
+          and "after 4 failed tries" in mine[1]["detail"] and mine[2]["detail"] == "fetched", str(mine))
+    net.fail = urllib.error.HTTPError("u", 401, "Unauthorized", {}, None)
+    loop2.tick()
+    mine = [x for x in scheduler.Health(os.path.join(d2, "h.log")).tail() if x["what"] == "net"]
+    check("an HTTP error status is still an error, not 'offline'", mine[-1]["level"] == "error")
+
     open(os.path.join(d, "STOP"), "w").close()
     loop.run_forever(sleep_s=5)
     check("a stop file ends the loop and is cleared", not os.path.exists(os.path.join(d, "STOP")))
@@ -299,7 +332,15 @@ def test_end_to_end() -> None:
     fc = jobs.edge.sharp_fair({"pinnacle": dict(zip(jobs.LABELS, w.pin))})["fair_prob"]["home"]
     check("profit and CLV of the settled pick",
           abs(bets[0]["profit"] - 1.40) < 1e-9 and abs(bets[0]["clv"] - (2.40 * fc - 1)) < 1e-9)
+    fdc = paper2.fd_closes.records()
+    check("the results file's closing prices are stored with the settlement",
+          len(fdc) == 1 and fdc[0]["close"]["BFE"] == [2.0, 3.6, 4.1] and "Avg" in fdc[0]["close"])
+    px = jobs.devig.devig_power([2.0, 3.6, 4.1])[0]
+    check("stand-in CLV uses the exchange close, kept apart from the Pinnacle CLV",
+          abs(bets[0]["clv_proxy"] - (2.40 * px - 1)) < 1e-9 and bets[0]["clv_proxy"] != bets[0]["clv"])
     card = open(os.path.join(d, "scorecard.md"), encoding="utf-8").read()
+    check("scorecard shows the stand-in and the live check against Pinnacle",
+          "Settled picks with a stand-in close: 1" in card and "Live check on 1 picks" in card, card)
     check("heartbeat written every tick", os.path.exists(os.path.join(d, "heartbeat.txt")))
     check("scorecard written with the settled bet and the veto split",
           "Settled: 1" in card and "Claude vetoed" in card and "Closing price captured for 1 of 1" in card,
@@ -342,6 +383,33 @@ def test_missed_windows_and_budget() -> None:
           paper4.picks.records() == [] and paper4.snaps.records()[0]["has_sharp"] is False)
 
 
+def test_stand_in_close_backfill() -> None:
+    # A pick settled before the results file carried closing prices gets them later, once.
+    w, d = World(), tempfile.mkdtemp()
+    full = w.csv
+    w.csv = "Div,Date,HomeTeam,AwayTeam,FTHG,FTAG,FTR\nE1,10/10/2026,QPR,West Brom,2,0,H\n"
+    paper, loop = make(w, d)
+    tick(loop, T0)
+    tick(loop, w.kickoff + dt.timedelta(hours=3))
+    b = jobs.settled_bets(paper)
+    check("settled without any closing price: both CLV figures are blank",
+          len(b) == 1 and b[0]["clv"] is None and b[0]["clv_proxy"] is None
+          and not paper.fd_closes.records())
+    card = open(os.path.join(d, "scorecard.md"), encoding="utf-8").read()
+    check("scorecard says no stand-in yet", "No settled pick has a stand-in close yet" in card)
+    w.csv = full
+    for f in os.listdir(os.path.join(d, "results_cache")):       # let the cached file expire
+        os.utime(os.path.join(d, "results_cache", f), (0, 0))
+    tick(loop, w.kickoff + dt.timedelta(hours=12))
+    tick(loop, w.kickoff + dt.timedelta(hours=24))
+    check("closing prices added later, once, without a second result",
+          len(paper.fd_closes.records()) == 1 and len(paper.results.records()) == 1
+          and jobs.settled_bets(paper)[0]["clv_proxy"] is not None)
+    paper.cfg["settle_give_up_days"] = 0
+    check("an old pick without closing prices is not retried for ever",
+          not jobs.Settle(paper)._owed_fd_close(w.kickoff + dt.timedelta(days=30)))
+
+
 def test_judgment_failure_is_safe() -> None:
     w, d = World(), tempfile.mkdtemp()
     paper, loop = make(w, d, judge=lambda *a, **k: (None, "usage limit reached"))
@@ -376,6 +444,7 @@ def test_status_command() -> None:
 def run_all() -> None:
     for fn in (test_store, test_budget, test_scheduler, test_judgment_fails_safe,
                test_names_and_feeds, test_end_to_end, test_missed_windows_and_budget,
+               test_stand_in_close_backfill,
                test_judgment_failure_is_safe, test_census_closing, test_status_command):
         fn()
     print("\n" + ("ALL PAPER TESTS PASSED" if not _failures

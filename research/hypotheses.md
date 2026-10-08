@@ -441,3 +441,21 @@ If accepted it is shown as its own labelled row and never mixed into the
 Pinnacle CLV figure; its measured bias is printed beside it. The Phase 5 gate
 (300 settled picks, CLV interval above zero) stays on Pinnacle closes only.
 If no proxy passes, none is used and the capture problem is reported as open.
+
+**M1 result (2026-10-08, `research/results/m1_close_proxy.md`).** My prediction
+was wrong about the market average.
+- Market average close (`AvgC`): fails. It reads lower than Pinnacle's CLV by
+  0.76 points on B0 (1,130 bets, interval -0.97 to -0.56) and by 0.68 on best of
+  books (2,518 bets, -0.82 to -0.54). Correlation 0.957 and 0.965. The bias is
+  steady and in the cautious direction, but it is outside the 0.5-point rule.
+- Bet365 close: fails badly (-5.09 and -2.44 points, correlation 0.85 and 0.88).
+- Betfair Exchange close (`BFEC`): passes the rule as written, on thin evidence.
+  Best of books: 156 bets, -0.12 points (-0.60 to +0.37), correlation 0.950,
+  per-bet error 3.1 points. B0: only 9 bets (-0.07, interval -3.63 to +3.48),
+  which says nothing by itself. The exchange columns exist only from 2024/25, so
+  in development data that is five leagues for one season.
+- Decision: the exchange close is used as a labelled stand-in in the paper
+  scorecard, with those numbers printed beside it, and never counted toward the
+  Phase 5 gate. The scorecard also reports stand-in minus Pinnacle on live picks
+  that have both, so the 156-bet check grows with the forward test. If that live
+  difference leaves the 0.5-point band once it has 100 picks, drop the stand-in.

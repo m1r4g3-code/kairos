@@ -7,7 +7,7 @@
 [![Version](https://img.shields.io/badge/version-2.0.0-blueviolet.svg)](https://github.com/m1r4g3-code/kairos/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-377%20passing-success.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-387%20passing-success.svg)](#testing)
 [![CI](https://github.com/m1r4g3-code/kairos/actions/workflows/tests.yml/badge.svg)](https://github.com/m1r4g3-code/kairos/actions/workflows/tests.yml)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](#license)
 
@@ -175,7 +175,7 @@ A result for an unknown id, or a second result for the same id, is refused. **Cl
 
 ## Testing
 
-**377 deterministic checks** across seven suites, run on every push via [GitHub Actions](.github/workflows/tests.yml) (Python 3.10 / 3.11 / 3.12). Everything runs offline against made-up fixtures — no network, no key.
+**387 deterministic checks** across seven suites, run on every push via [GitHub Actions](.github/workflows/tests.yml) (Python 3.10 / 3.11 / 3.12). Everything runs offline against made-up fixtures — no network, no key.
 
 ```bash
 python engine/test_engine.py    # math, de-vig, derive, staking, orchestration

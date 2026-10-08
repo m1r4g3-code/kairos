@@ -15,6 +15,7 @@ Files (all under paper/state/, append-only unless noted):
   snapshots.jsonl   every bookmaker's 1X2 price at pick time, per event
   closes.jsonl      Pinnacle's price shortly before kickoff, per event
   results.jsonl     final score per event (or "unmatched")
+  fd_closes.jsonl   closing prices from the Football-Data results file, per event
   judgments.jsonl   Claude's verdict per pick (veto or not, and why)
   state.json        timestamps of the last run of each job (rewritten)
   budget.json       Odds API credits this month (rewritten)
@@ -37,7 +38,7 @@ for p in (ROOT, os.path.join(ROOT, "engine"), os.path.join(ROOT, "harness")):
         sys.path.insert(0, p)
 
 from core import budget as budget_mod      # noqa: E402
-from core import judgment, metrics, store  # noqa: E402
+from core import devig, judgment, metrics, store  # noqa: E402
 from core.scheduler import Health          # noqa: E402
 import config as engine_config             # noqa: E402
 import edge                                # noqa: E402
@@ -47,6 +48,7 @@ import feeds                               # noqa: E402
 import names                               # noqa: E402
 
 LABELS = ("home", "draw", "away")
+PROXY_BOOK = "BFE"       # Betfair Exchange close from Football-Data; see research M1
 
 
 def parse_time(text: str) -> dt.datetime:
@@ -68,6 +70,7 @@ class Paper:
         self.snaps = store.KeyedLog(os.path.join(state_dir, "snapshots.jsonl"))
         self.closes = store.KeyedLog(os.path.join(state_dir, "closes.jsonl"))
         self.results = store.KeyedLog(os.path.join(state_dir, "results.jsonl"))
+        self.fd_closes = store.KeyedLog(os.path.join(state_dir, "fd_closes.jsonl"))
         self.judgments = store.KeyedLog(os.path.join(state_dir, "judgments.jsonl"))
         self.state_path = os.path.join(state_dir, "state.json")
         self.health = Health(os.path.join(state_dir, "health.log"))
@@ -287,26 +290,39 @@ class Settle:
         after = dt.timedelta(minutes=self.p.cfg["settle_after_minutes"])
         return [p for p in self.p.unsettled() if parse_time(p["commence"]) + after < now]
 
+    def _owed_fd_close(self, now: dt.datetime) -> list[dict]:
+        """Settled picks still without the results file's closing prices (not older than the give-up age)."""
+        res, have = self.p.results.latest(), self.p.fd_closes.keys()
+        limit = dt.timedelta(days=self.p.cfg["settle_give_up_days"])
+        return [p for p in self.p.picks.records()
+                if (res.get(f"result|{p['event_id']}") or {}).get("status") == "settled"
+                and f"fdclose|{p['event_id']}" not in have
+                and now - parse_time(p["commence"]) <= limit]
+
     def due(self, now: dt.datetime) -> bool:
         last = self.p.state().get("settled_utc")
         if last and now - parse_time(last) < dt.timedelta(hours=self.p.cfg["settle_every_hours"]):
             return False
-        return bool(self._ready(now))
+        return bool(self._ready(now) or self._owed_fd_close(now))
 
     def run(self, now: dt.datetime) -> str:
-        cfg, done, gave_up = self.p.cfg, 0, 0
+        cfg, done, gave_up, stand_ins = self.p.cfg, 0, 0, 0
         by_league: dict = {}
-        for p in self._ready(now):
+        for p in self._ready(now) + self._owed_fd_close(now):
             by_league.setdefault(p["league"], []).append(p)
         cache = os.path.join(self.p.dir, "results_cache")
         for lg, picks in by_league.items():
             rows = feeds.results(lg, now.date(), cache, cfg["results_cache_hours"], self.p.http)
             for pk in picks:
                 key = f"result|{pk['event_id']}"
-                if self.p.results.has(key):
-                    continue
                 start = parse_time(pk["commence"])
                 row = names.match(pk["home"], pk["away"], start.date(), rows)
+                if row and row.get("close"):
+                    stand_ins += self.p.fd_closes.add({
+                        "key": f"fdclose|{pk['event_id']}", "event_id": pk["event_id"],
+                        "close": row["close"], "seen_utc": iso(now)})
+                if self.p.results.has(key):
+                    continue
                 if row:
                     done += self.p.results.add({
                         "key": key, "event_id": pk["event_id"], "status": "settled",
@@ -318,7 +334,8 @@ class Settle:
         self.p.set_state("settled_utc", iso(now))
         if gave_up:
             self.p.health.write("warn", "settle", f"{gave_up} events could not be matched", now)
-        return f"{done} events settled, {gave_up} given up"
+        return (f"{done} events settled, {gave_up} given up"
+                + (f", {stand_ins} stand-in closing prices stored" if stand_ins else ""))
 
 
 JUDGE_PROMPT = """You are reviewing paper bets for a recommend-only football research project.
@@ -420,6 +437,7 @@ def settled_bets(paper: Paper) -> list[dict]:
     res = paper.results.latest()
     closes = paper.closes.latest()
     vetoes = {r["pick_key"]: r["veto"] for r in paper.judgments.records()}
+    fd = paper.fd_closes.latest()
     out = []
     for p in paper.picks.records():
         r = res.get(f"result|{p['event_id']}")
@@ -428,9 +446,16 @@ def settled_bets(paper: Paper) -> list[dict]:
         h, a = r["fthg"], r["ftag"]
         won = {"home": h > a, "draw": h == a, "away": h < a}[p["selection"]]
         c = closes.get(f"close|{p['event_id']}")
+        proxy = ((fd.get(f"fdclose|{p['event_id']}") or {}).get("close") or {}).get(PROXY_BOOK)
+        try:
+            proxy_fair = devig.devig_power(list(proxy)) if proxy else None
+        except ValueError:
+            proxy_fair = None
         out.append({"cluster": p["event_id"], "league": p["league"], "stake": p["stake"],
                     "odds": p["odds"], "profit": p["stake"] * (p["odds"] - 1) if won else -p["stake"],
                     "clv": p["odds"] * c["fair_prob"][p["selection"]] - 1.0 if c else None,
+                    "clv_proxy": (p["odds"] * proxy_fair[LABELS.index(p["selection"])] - 1.0
+                                  if proxy_fair else None),
                     "claimed_ev": p["claimed_ev"], "veto": vetoes.get(p["key"])})
     return out
 
@@ -495,6 +520,25 @@ def scorecard(paper: Paper, now: dt.datetime) -> str:
         L.append(_line("Claude vetoed", metrics.bet_summary(vetoed) if vetoed else None))
     else:
         L.append("| **All** | 0 | - | - | - | - |")
+    px = [dict(x, clv=x["clv_proxy"]) for x in bets if x["clv_proxy"] is not None]
+    both = [x for x in bets if x["clv"] is not None and x["clv_proxy"] is not None]
+    L += ["", "## Stand-in closing price (Betfair Exchange close from the results file)", "",
+          "Used only to score picks whose Pinnacle close was missed. It is a stand-in: on past "
+          "seasons it read 0.1 points below Pinnacle's CLV on average (156 bets, interval -0.6 to "
+          "+0.4), and one bet can differ by 3 points. It never counts toward the 300-pick test.", ""]
+    if px:
+        s = metrics.bet_summary(px)
+        L.append(f"- Settled picks with a stand-in close: {len(px)}. CLV by the stand-in: "
+                 f"{s['clv'] * 100:+.1f}% ({s['clv_ci'][0] * 100:+.1f} to {s['clv_ci'][1] * 100:+.1f}).")
+    else:
+        L.append("- No settled pick has a stand-in close yet.")
+    if both:
+        d = metrics.paired_diff([x["clv_proxy"] for x in both], [x["clv"] for x in both])
+        L.append(f"- Live check on {d['n']} picks with both closes: stand-in minus Pinnacle "
+                 f"{d['mean'] * 100:+.2f} points"
+                 + (f" ({d['lo'] * 100:+.2f} to {d['hi'] * 100:+.2f})." if d["n"] > 1 else "."))
+    else:
+        L.append("- Live check against Pinnacle's close: no pick has both yet.")
     cs = census.summary(paper.census_path)
     L += ["", "## SportyBet census (prices from screenshots)", "",
           f"- Prices logged: {cs['prices']} on {cs['events']} matches; "
