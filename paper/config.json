@@ -35,6 +35,6 @@
   "offline_retry_seconds": 60,
   "keep_awake_for_close": true,
   "keep_awake_lead_minutes": 90,
-  "wake_for_close": false,
+  "wake_for_close": true,
   "wake_lead_minutes": 40
 }
