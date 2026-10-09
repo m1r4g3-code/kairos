@@ -500,3 +500,34 @@ on an exchange.
   draw last), the same for every bookmaker in an event (checked on 339 cached
   events). New lines are stored home, draw, away and say so.
 - Used in `docs/execution-design.md`. Nothing built.
+
+## C1: is there a gap between Cloudbet's prices and Pinnacle's fair price?
+
+Written 2026-10-09, before any Cloudbet price was compared with Pinnacle.
+
+**Why.** Cloudbet is the one venue in `docs/execution-design.md` that allows
+automated betting and that secondary sources say accepts Nigerian customers.
+Nobody has measured its prices. On 2026-10-09 the owner approved in writing
+storing his Cloudbet key for reading prices only.
+
+**Method (forward only; there is no history).** Each time the paper loop takes
+a league's prices from The Odds API it reads Cloudbet's 1X2 prices for the same
+league seconds later. Every Cloudbet price for a match that has a Pinnacle
+price is stored with Pinnacle's fair probability (power de-vig) and Cloudbet's
+stated maximum stake. Where Cloudbet's price times the fair probability exceeds
+1.03, a one-unit paper pick is logged as strategy C1. Closing price, settlement
+and the Claude review are the same as for P1. No bet is placed.
+
+**What is reported.** Share of Cloudbet prices above Pinnacle's fair price and
+above it by 3%; C1 picks' CLV against Pinnacle's close with a 95% interval;
+return per bet; the maximum stake on picked prices.
+
+**Prediction.** Cloudbet follows the sharp market closely: fewer than 2% of its
+prices will beat Pinnacle's fair price by 3%, and C1's CLV will not be
+distinguishable from zero.
+
+**Rule.** The brief's gate applies unchanged: nothing that places bets is
+considered before 300 settled C1 picks whose CLV against Pinnacle's close has a
+95% interval above zero. If after 1,000 Cloudbet prices fewer than 1% are 3%
+above fair, stop expecting an edge here and say so. Timing caveat to carry into
+every report: the two prices are read seconds apart, not at the same instant.
