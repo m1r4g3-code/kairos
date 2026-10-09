@@ -94,6 +94,7 @@ class World:
 
 def make(world, state_dir, judge=None, cfg_over=None):
     cfg = run.load_config()
+    cfg.update({"wake_for_close": False})          # tests do not depend on the owner's switch
     cfg.update(cfg_over or {})
     budget = budget_mod.Budget(os.path.join(state_dir, "budget.json"),
                                cfg["budget_monthly_cap"], cfg["budget_reserve"])

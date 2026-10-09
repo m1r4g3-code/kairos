@@ -15,6 +15,7 @@ Pure stdlib.
 
 from __future__ import annotations
 
+import faulthandler
 import json
 import os
 import sys
@@ -54,6 +55,10 @@ def main(argv: list[str]) -> int:
         open(STOP, "w").close()
         print("stop requested; the loop will exit within a few seconds")
         return 0
+    if "--status" not in argv:
+        # pythonw shows no errors: if start-up hangs, leave a trace of where (cancelled once running)
+        trace = open(os.path.join(STATE, "startup-trace.log"), "a", encoding="utf-8")
+        faulthandler.dump_traceback_later(120, file=trace)
     paper, loop = build(cfg)
     if "--status" in argv:
         print(jobs.scorecard(paper, utcnow()))
@@ -67,6 +72,7 @@ def main(argv: list[str]) -> int:
         with SingleInstance(os.path.join(STATE, "loop.lock")):
             if os.path.exists(STOP):
                 os.remove(STOP)                   # a stale stop request from last time
+            faulthandler.cancel_dump_traceback_later()
             if "--once" in argv:
                 for name, msg in loop.tick():
                     print(f"{name}: {msg}")
