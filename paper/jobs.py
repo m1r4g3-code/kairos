@@ -16,6 +16,7 @@ Files (all under paper/state/, append-only unless noted):
   closes.jsonl      Pinnacle's price shortly before kickoff, per event
   results.jsonl     final score per event (or "unmatched")
   fd_closes.jsonl   closing prices from the Football-Data results file, per event
+  cloudbet.jsonl    Cloudbet's 1X2 prices beside Pinnacle's fair price, per event (research C1)
   judgments.jsonl   Claude's verdict per pick (veto or not, and why)
   state.json        timestamps of the last run of each job (rewritten)
   budget.json       Odds API credits this month (rewritten)
@@ -63,7 +64,7 @@ class Paper:
     """Shared context: config, files, feeds."""
 
     def __init__(self, cfg: dict, state_dir: str, odds_client=None, http=None,
-                 judge=None, census_path: str | None = None):
+                 judge=None, census_path: str | None = None, cloudbet="auto"):
         self.cfg, self.dir = cfg, state_dir
         os.makedirs(state_dir, exist_ok=True)
         self.picks = store.KeyedLog(os.path.join(state_dir, "picks.jsonl"))
@@ -71,6 +72,12 @@ class Paper:
         self.closes = store.KeyedLog(os.path.join(state_dir, "closes.jsonl"))
         self.results = store.KeyedLog(os.path.join(state_dir, "results.jsonl"))
         self.fd_closes = store.KeyedLog(os.path.join(state_dir, "fd_closes.jsonl"))
+        self.cb_prices = store.KeyedLog(os.path.join(state_dir, "cloudbet.jsonl"))
+        cb_cfg = cfg.get("cloudbet") or {}
+        if cloudbet == "auto":                    # read-only price reader; None when off or no key stored
+            import cloudbet as cloudbet_mod
+            cloudbet = cloudbet_mod.Client.from_secret() if cb_cfg.get("enabled") else None
+        self.cloudbet = cloudbet
         self.judgments = store.KeyedLog(os.path.join(state_dir, "judgments.jsonl"))
         self.state_path = os.path.join(state_dir, "state.json")
         self.health = Health(os.path.join(state_dir, "health.log"))
@@ -209,11 +216,57 @@ class Snapshot:
                             "commence": ev["commence_time"], "selection": sel,
                             "odds": price, "book": book, "fair_prob": fair[sel],
                             "claimed_ev": ev_claim, "stake": 1.0, "made_utc": iso(now)})
+            made += self._cloudbet(lg, sport, [e for e in evs if e["id"] in wanted], now)
         msg = f"{made} new picks from {sum(len(v) for v in self._pending.values())} matches"
         if skipped:
             msg += f"; budget refused snapshots for {', '.join(skipped)}"
             self.p.health.write("warn", "budget", f"snapshot skipped for {skipped}", now)
         return msg
+
+
+    def _cloudbet(self, lg: str, sport: str, events: list[dict], now: dt.datetime) -> int:
+        """
+        Research C1: read Cloudbet's prices for this league right after the Odds API
+        fetch, store each beside Pinnacle's fair price, and paper-pick the ones 3%
+        above it. Read-only. Any failure is a warning and never stops the snapshot.
+        """
+        cfg = self.p.cfg.get("cloudbet") or {}
+        comp = (cfg.get("competitions") or {}).get(lg)
+        if not self.p.cloudbet or not comp or not events:
+            return 0
+        try:
+            rows = [dict(r, date=parse_time(r["kickoff"]).date()) for r in self.p.cloudbet.match_odds(comp)]
+        except Exception as e:                                    # never let Cloudbet break the loop
+            self.p.health.write("warn", "cloudbet", f"{lg}: {type(e).__name__}: {e}"[:200], now)
+            return 0
+        if not rows:
+            self.p.health.write("warn", "cloudbet", f"{lg}: Cloudbet shows no open 1X2 price", now)
+            return 0
+        made = 0
+        lead = now + dt.timedelta(minutes=self.p.cfg["snapshot_min_lead_minutes"])
+        for ev in events:
+            start = parse_time(ev["commence_time"])
+            got = sharp_and_best(ev, self.p.cfg)
+            row = names.match(ev["home_team"], ev["away_team"], start.date(), rows)
+            if not got or not row or start <= lead:
+                continue
+            if abs((parse_time(row["kickoff"]) - start).total_seconds()) > 3 * 3600:
+                continue                                          # same teams, different fixture
+            fair = got[0]
+            self.p.cb_prices.add({"key": f"cb|{ev['id']}", "event_id": ev["id"], "league": lg,
+                                  "seen_utc": iso(now), "commence": ev["commence_time"],
+                                  "home": ev["home_team"], "away": ev["away_team"],
+                                  "prices": row["prices"], "max_stake": row["max_stake"], "fair_prob": fair})
+            for sel in LABELS:
+                claim = row["prices"][sel] * fair[sel] - 1.0
+                if claim > cfg.get("min_edge", self.p.cfg["min_edge"]):
+                    made += self.p.picks.add({
+                        "key": f"pick|{ev['id']}|{sel}|C1", "event_id": ev["id"], "strategy": "C1",
+                        "sport": sport, "league": lg, "home": ev["home_team"], "away": ev["away_team"],
+                        "commence": ev["commence_time"], "selection": sel, "odds": row["prices"][sel],
+                        "book": "cloudbet", "fair_prob": fair[sel], "claimed_ev": claim, "stake": 1.0,
+                        "max_stake": row["max_stake"].get(sel), "made_utc": iso(now)})
+        return made
 
 
 class Closing:
@@ -457,6 +510,7 @@ def settled_bets(paper: Paper) -> list[dict]:
         except ValueError:
             proxy_fair = None
         out.append({"cluster": p["event_id"], "league": p["league"], "stake": p["stake"],
+                    "strategy": p.get("strategy", "P1"),
                     "odds": p["odds"], "profit": p["stake"] * (p["odds"] - 1) if won else -p["stake"],
                     "clv": p["odds"] * c["fair_prob"][p["selection"]] - 1.0 if c else None,
                     "clv_proxy": (p["odds"] * proxy_fair[LABELS.index(p["selection"])] - 1.0
@@ -475,8 +529,10 @@ def _line(label: str, s: dict | None) -> str:
 
 
 def scorecard(paper: Paper, now: dt.datetime) -> str:
-    picks = paper.picks.records()
-    bets = settled_bets(paper)
+    all_picks = paper.picks.records()
+    all_bets = settled_bets(paper)
+    picks = [p for p in all_picks if p.get("strategy", "P1") == "P1"]
+    bets = [x for x in all_bets if x["strategy"] == "P1"]
     started = [p for p in picks if parse_time(p["commence"]) <= now]
     closed = paper.closes.keys()
     with_close = sum(1 for p in started if f"close|{p['event_id']}" in closed)
@@ -512,7 +568,8 @@ def scorecard(paper: Paper, now: dt.datetime) -> str:
           f"- Made: {len(picks)}. Kicked off: {len(started)}. Closing price captured for "
           f"{with_close} of {len(started)}"
           + (f" ({with_close / len(started) * 100:.0f}%)." if started else "."),
-          f"- Settled: {len(bets)}. Waiting for a result: {len(paper.unsettled())}.", "",
+          f"- Settled: {len(bets)}. Waiting for a result: "
+          f"{sum(1 for p in paper.unsettled() if p.get('strategy', 'P1') == 'P1')}.", "",
           "| Group | Settled bets | Return per bet | 95% interval | CLV | 95% interval |",
           "|---|---|---|---|---|---|"]
     if bets:
@@ -544,6 +601,28 @@ def scorecard(paper: Paper, now: dt.datetime) -> str:
                  + (f" ({d['lo'] * 100:+.2f} to {d['hi'] * 100:+.2f})." if d["n"] > 1 else "."))
     else:
         L.append("- Live check against Pinnacle's close: no pick has both yet.")
+    cb = paper.cb_prices.records()
+    c1_picks = [p for p in all_picks if p.get("strategy") == "C1"]
+    c1 = [x for x in all_bets if x["strategy"] == "C1"]
+    L += ["", "## Cloudbet (strategy C1: Cloudbet's price against Pinnacle's fair price, +3%)", "",
+          "Prices are read only. Nothing is placed. The two prices are read seconds apart."]
+    if not paper.cloudbet and not cb:
+        L.append("- Not running: no Cloudbet key stored, or switched off in the config.")
+    else:
+        n = sum(len(r["prices"]) for r in cb)
+        over0 = sum(1 for r in cb for s in LABELS if r["prices"][s] * r["fair_prob"][s] > 1.0)
+        over3 = sum(1 for r in cb for s in LABELS if r["prices"][s] * r["fair_prob"][s] > 1.03)
+        L.append(f"- Cloudbet prices logged: {n} on {len(cb)} matches. Above Pinnacle's fair price: "
+                 + (f"{over0} ({over0 / n * 100:.1f}%). Above it by 3%: {over3} ({over3 / n * 100:.1f}%)."
+                    if n else "none yet."))
+        with_c = sum(1 for p in c1_picks if parse_time(p["commence"]) <= now
+                     and f"close|{p['event_id']}" in closed)
+        c1_started = sum(1 for p in c1_picks if parse_time(p["commence"]) <= now)
+        L.append(f"- C1 picks made: {len(c1_picks)}. Kicked off: {c1_started}. "
+                 f"Pinnacle closing price captured for {with_c}.")
+        L += ["", "| Group | Settled bets | Return per bet | 95% interval | CLV | 95% interval |",
+              "|---|---|---|---|---|---|",
+              _line("**C1 (Cloudbet)**", metrics.bet_summary(c1) if c1 else None)]
     cs = census.summary(paper.census_path)
     L += ["", "## SportyBet census (prices from screenshots)", "",
           f"- Prices logged: {cs['prices']} on {cs['events']} matches; "

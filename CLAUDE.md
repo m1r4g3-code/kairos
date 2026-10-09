@@ -102,4 +102,5 @@ When 1X2 has no value/confidence, proactively check the **cousins**: O/U (totals
 - When the betting slice runs out, STOP — never refill from savings. Never chase. Keep stakes steady (they use ~500).
 
 ## Secrets
+- **Cloudbet key** (a Trading key, could place bets): owner approved on 2026-10-09 storing it **for reading prices only**. It lives in Windows Credential Manager as `KairosCloudbet` (`core/secret.py`), never in `.env`, the repo, a log or a prompt. `paper/cloudbet.py` is GET-only on the odds feed. Never add bet or account calls; placing bets still needs written approval plus the 300-pick record (`docs/execution-design.md`).
 `.env` (gitignored, NEVER commit): `THE_ODDS_API_KEY`, `OPENWEATHER_API_KEY`. Config accepts `THE_ODDS_API_KEY` or `ODDS_API_KEY`. Free tier 500 calls/mo — cache to `engine/fixtures/`. Stay zero-dependency (stdlib urllib). Git identity: Adekoya Emmanuel; GitHub m1r4g3-code/kairos (private).

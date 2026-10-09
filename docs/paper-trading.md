@@ -91,6 +91,7 @@ All in `paper/state/` (gitignored: the data stays on this PC).
 | `snapshots.jsonl` | Every bookmaker's 1X2 price at pick time, for every watched match, picked or not |
 | `closes.jsonl` | Pinnacle's price shortly before kickoff, per match with a pick |
 | `results.jsonl` | Final score per match, or "unmatched" after 10 days |
+| `cloudbet.jsonl` | Cloudbet's 1X2 prices and maximum stakes beside Pinnacle's fair price, per match |
 | `fd_closes.jsonl` | Closing prices from the results file per settled match: Betfair Exchange, market average, market best, Bet365 |
 | `judgments.jsonl` | Claude's verdict per pick: veto or not, one-line reason, model |
 | `scorecard.md` | The summary above, rewritten daily and after each settlement |
@@ -123,8 +124,46 @@ closes, and it never counts toward the 300-pick test for Phase 5. That test
 needs Pinnacle closes, which means the PC awake and online in the hour before
 kickoff.
 
+## Cloudbet prices (research C1, added 2026-10-09)
+
+Each time the loop takes a league's prices from The Odds API it also reads
+Cloudbet's 1X2 prices for that league, stores them beside Pinnacle's fair price
+(`paper/state/cloudbet.jsonl`), and logs a paper pick, strategy **C1**, where
+Cloudbet's price is 3% above fair. C1 picks get a closing price, a settlement
+and a Claude review like any other, and have their own section in the
+scorecard. Nothing is placed.
+
+**The key.** The owner's Cloudbet key is a Trading key: it could place bets.
+The brief forbids storing bookmaker credentials. On 2026-10-09 the owner
+approved in writing storing this key **for reading prices only** ("go with 2 i
+grant to permission to use it"). What that covers and how it is held:
+
+- It is in Windows Credential Manager under the name `KairosCloudbet`. It is in
+  no file in this folder, no log and no prompt. (It was pasted into a Claude
+  Code chat once, so it is also in that chat's saved transcript on this PC.)
+- `paper/cloudbet.py` can only send GET requests to Cloudbet's odds feed. It
+  has no bet placement and no account call, it refuses any other address, and a
+  test fails if any such code is added.
+- To withdraw the permission: delete `KairosCloudbet` in Windows Credential
+  Manager (Control Panel, Credential Manager, Windows Credentials), or set
+  `"enabled": false` under `cloudbet` in `paper/config.json`, or revoke the key
+  on Cloudbet's site. The loop then carries on without Cloudbet.
+- Placing bets with it is not covered. That still needs the owner's written
+  approval and the 300-pick record in `docs/execution-design.md`.
+
+**State on 2026-10-09: no Cloudbet price has been recorded yet.** The key works
+and the feed answers (limit shown: 1,800 requests per window), but Cloudbet
+returned every main market (match result, handicap, goal line) as "disabled"
+with a price of 0 for every league I tried, football and NBA, while side
+markets such as goalscorers were open. I do not know why. It may be a
+suspension on Cloudbet's side, or the account may need a deposit or
+verification before main prices are shown. The loop logs "Cloudbet shows no
+open 1X2 price" each time this happens and tries again at the next snapshot.
+
 ## Moving it to another machine
 
+0. The Cloudbet key does not travel with the folder. On the new machine, store
+   it again in Windows Credential Manager as `KairosCloudbet`, or leave Cloudbet off.
 1. Copy the whole Kairos folder, including `paper/state/` and `.env`. If git is used
    instead, copy `paper/state/` and `.env` across by hand: neither is in git.
 2. Install Python 3.10 or later. Nothing else is needed.

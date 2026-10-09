@@ -102,7 +102,7 @@ def make(world, state_dir, judge=None, cfg_over=None):
     world.awake, world.wakes = getattr(world, "awake", []), getattr(world, "wakes", [])
     paper, loop = run.build(cfg, state_dir, odds_client=client, http=world.http,
                             judge=judge or (lambda *a, **k: (None, "disabled in test")),
-                            census_path=census_path,
+                            census_path=census_path, cloudbet=getattr(world, "cloudbet", None),
                             set_awake=lambda on: world.awake.append(on) or True,
                             register_wake=lambda t: world.wakes.append(t) or (True, ""))
     paper.budget = budget
@@ -465,6 +465,88 @@ def test_power() -> None:
           and any("resumed after 60 minutes asleep" in x for x in h3), f"{ticks} {h3}")
 
 
+def test_cloudbet_read_only() -> None:
+    import cloudbet
+
+    def feed(prices, status="SELECTION_ENABLED", kickoff=None, home="QPR", away="West Brom"):
+        return json.dumps({"events": [
+            {"type": "EVENT_TYPE_OUTRIGHT", "status": "TRADING", "name": "Top 8"},
+            {"type": "EVENT_TYPE_EVENT", "status": "TRADING", "home": {"name": home}, "away": {"name": away},
+             "cutoffTime": (kickoff or World().kickoff).isoformat().replace("+00:00", "Z"),
+             "markets": {"soccer.match_odds": {"submarkets": {"period=ft": {"selections": [
+                 {"outcome": o, "price": p, "maxStake": 250.0, "status": status, "side": "BACK"}
+                 for o, p in zip(("home", "draw", "away"), prices)]}}}}}]}).encode()
+
+    seen = []
+
+    def getter(url, headers, timeout=30.0):
+        seen.append((url, headers))
+        return feed((2.45, 3.30, 3.00))
+
+    c = cloudbet.Client("SECRET-KEY", getter)
+    rows = c.match_odds("soccer-england-championship")
+    check("Cloudbet match prices parsed, outrights ignored",
+          len(rows) == 1 and rows[0]["prices"] == {"home": 2.45, "draw": 3.3, "away": 3.0}
+          and rows[0]["max_stake"]["home"] == 250.0)
+    check("only the odds feed is ever requested", all(u.startswith(cloudbet.FEED) for u, _ in seen))
+    check("a suspended price is not a price", cloudbet.parse(feed((2.45, 3.3, 3.0), "SELECTION_DISABLED")) == [])
+    src = open(cloudbet.__file__, encoding="utf-8").read().lower()
+    code = src.split('"""', 2)[2]
+    check("the reader has no way to place a bet or touch the account",
+          not any(w in code for w in ("post", "/bets", "/account", "trading/", "put(", "delete"))
+          and 'method="get"' in code, "")
+
+    # In the loop: a Cloudbet price 3% above Pinnacle's fair price becomes a C1 paper pick.
+    w, d = World(), tempfile.mkdtemp()
+    w.cloudbet = c
+    paper, loop = make(w, d)
+    tick(loop, T0)
+    cb = paper.cb_prices.records()
+    c1 = [p for p in paper.picks.records() if p["strategy"] == "C1"]
+    check("Cloudbet prices stored beside Pinnacle's fair price", len(cb) == 1 and "fair_prob" in cb[0])
+    check("C1 pick made at Cloudbet's price, with its maximum stake",
+          len(c1) == 1 and c1[0]["selection"] == "home" and c1[0]["odds"] == 2.45
+          and c1[0]["book"] == "cloudbet" and c1[0]["max_stake"] == 250.0, str(c1))
+    check("the key is in no state file", not any(
+        "SECRET-KEY" in open(os.path.join(dp, f), encoding="utf-8", errors="replace").read()
+        for dp, _, fs in os.walk(d) for f in fs))
+    w.pin = (1.95, 3.50, 4.00)
+    tick(loop, w.kickoff - dt.timedelta(minutes=30))
+    tick(loop, w.kickoff + dt.timedelta(hours=3))
+    card = open(os.path.join(d, "scorecard.md"), encoding="utf-8").read()
+    bets = jobs.settled_bets(paper)
+    check("C1 settles and is scored apart from P1",
+          sorted(b["strategy"] for b in bets) == ["C1", "P1"] and "**C1 (Cloudbet)** | 1 |" in card
+          and "- Made: 1. Kicked off: 1." in card, card[-900:])
+
+    # Cloudbet failing must not cost the P1 snapshot.
+    w2, d2 = World(), tempfile.mkdtemp()
+
+    def broken(url, headers, timeout=30.0):
+        raise OSError("connection reset")
+
+    w2.cloudbet = cloudbet.Client("K", broken)
+    paper2, loop2 = make(w2, d2)
+    tick(loop2, T0)
+    check("a Cloudbet failure is a warning and P1 carries on",
+          len(paper2.picks.records()) == 1 and paper2.picks.records()[0]["strategy"] == "P1"
+          and any(h["what"] == "cloudbet" and h["level"] == "warn" for h in paper2.health.tail()))
+    w3, d3 = World(), tempfile.mkdtemp()
+    w3.cloudbet = cloudbet.Client("K", lambda url, headers, timeout=30.0:
+                                  feed((2.45, 3.3, 3.0), "SELECTION_DISABLED"))
+    paper3, loop3 = make(w3, d3)
+    tick(loop3, T0)
+    check("all prices suspended: nothing logged, one plain warning",
+          not paper3.cb_prices.records()
+          and any("no open 1X2 price" in h["detail"] for h in paper3.health.tail()))
+    try:
+        c._get("../v1/account/info")
+        refused = False
+    except ValueError:
+        refused = True
+    check("a path outside the odds feed is refused", refused)
+
+
 def test_judgment_failure_is_safe() -> None:
     w, d = World(), tempfile.mkdtemp()
     paper, loop = make(w, d, judge=lambda *a, **k: (None, "usage limit reached"))
@@ -499,7 +581,7 @@ def test_status_command() -> None:
 def run_all() -> None:
     for fn in (test_store, test_budget, test_scheduler, test_judgment_fails_safe,
                test_names_and_feeds, test_end_to_end, test_missed_windows_and_budget,
-               test_stand_in_close_backfill, test_power,
+               test_stand_in_close_backfill, test_power, test_cloudbet_read_only,
                test_judgment_failure_is_safe, test_census_closing, test_status_command):
         fn()
     print("\n" + ("ALL PAPER TESTS PASSED" if not _failures
